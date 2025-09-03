@@ -5,6 +5,16 @@ pub struct InstructionDecodeError(String);
 
 /// ADD-Add 
 /// [Opcode] [Instruction] [`Op/En`](OperandEncoding) 64-bit Mode Compat/Leg Mode Description
+///
+/// 0x81: [ # OPCODE
+///         None,          # Option<Mnemonic>
+///         True,          # ModRMByte
+///         'mi',          # OpEn
+///         {              # OpcodeExtension Dictionary
+///             0: 'add', 1: 'or', 2: 'adc', 3: 'sbb', 
+///             4: 'and', 5: 'sub', 6: 'xor', 7: 'cmp'
+///          }
+/// ]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Instruction {
     opcode: OpCode,
