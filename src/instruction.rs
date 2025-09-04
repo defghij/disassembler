@@ -1,7 +1,9 @@
 
 #[allow(unused)]
 #[derive(Clone, Debug)]
-pub struct InstructionDecodeError(String);
+pub enum DecodeError {
+    InvalidAddressingMode
+}
 
 /// ADD-Add 
 /// [Opcode] [Instruction] [`Op/En`](OperandEncoding) 64-bit Mode Compat/Leg Mode Description
@@ -18,32 +20,32 @@ pub struct InstructionDecodeError(String);
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Instruction {
     opcode: OpCode,
-    instruction: String,
-    operand_encoding: OpEncoding,
-    description: Option<String>,
+    modrm: ModRM,
+    sib: Sib,
+    displacement: Displacement,
 }
 impl TryFrom<String> for Instruction {
-    type Error = InstructionDecodeError;
+    type Error = DecodeError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let ins = Instruction {
             opcode: OpCode::A,
-            instruction: value,
-            operand_encoding: OpEncoding::A,
-            description: None,
+            modrm: ModRM::default(),
+            sib: Sib::default(),
+            displacement: todo!(),
         };
         Ok(ins)
     }
 }
 impl TryFrom<&[u8]> for Instruction {
-    type Error = InstructionDecodeError;
+    type Error = DecodeError;
 
     fn try_from(_value: &[u8]) -> Result<Self, Self::Error> {
         let ins = Instruction {
             opcode: OpCode::A,
-            instruction: "none".to_string(),
-            operand_encoding: OpEncoding::A,
-            description: None,
+            modrm: ModRM::default(),
+            sib: Sib::default(),
+            displacement: todo!(),
         };
         Ok(ins)
     }
@@ -51,11 +53,6 @@ impl TryFrom<&[u8]> for Instruction {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OpCode {
-    A
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum OpEncoding {
     A
 }
 
@@ -71,11 +68,10 @@ enum OperandEncoding {
 #[allow(unused)]
 #[derive(Clone, Debug)]
 enum Operand {
-    RM,
-    REG,
-    Imm,
-    EAX,
-    NONE
+    Memory,
+    Reg(Registers),
+    Imm { width: usize, value: u32 },
+    None
 }
 
 #[allow(unused)]
@@ -85,10 +81,59 @@ enum Registers {
     ESP = 4, EBP = 5, ESI = 6, EDI = 7,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Displacement(u8);
+
 #[allow(unused)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct ModRM {
     r#mod: u8,
     reg:   u8,
     rm:    u8
+} 
+impl ModRM {
+    fn syntax(&self) -> Result<String,DecodeError>  {
+        match self.r#mod {
+            0b00 => {
+                Ok("todo".to_string())
+            },
+            0b01 => { // [r/m + byte]
+                Ok("todo".to_string())
+            },
+            0b10 => { // [r/m + dword] 
+                Ok("todo".to_string())
+            },
+            0b11 => { // r/m
+
+                Ok("todo".to_string())
+            }
+            _ => Err(DecodeError::InvalidAddressingMode),
+        }
+    }
+}
+impl From<u8> for ModRM {
+    fn from(value: u8) -> Self {
+        Self {
+            r#mod: (value & 0b11000000) >> 6,
+            reg:   (value & 0b00111000) >> 3,
+            rm:    (value & 0b00000111) >> 0,
+        }
+    }
+}
+
+#[allow(unused)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Sib {
+    scale: u8,
+    index: u8,
+    base:  u8
+} 
+impl From<u8> for Sib {
+    fn from(value: u8) -> Self {
+        Self {
+            scale: (value & 0b11000000) >> 6,
+            index:   (value & 0b00111000) >> 3,
+            base:    (value & 0b00000111) >> 0,
+        }
+    }
 }
