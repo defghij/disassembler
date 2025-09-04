@@ -1,15 +1,15 @@
 #[cfg(test)]
 pub mod compendium {
-    use crate::instruction::Instruction;
+    use crate::instruction::DecodeRule;
 
     #[inline(always)]
     fn check_instructions(mapping: Vec<(&str, &[u8])>) {
         mapping.iter().for_each(|(s,b)|{
-            let int3_s: Instruction = s
+            let int3_s: DecodeRule = s
                 .to_string()
                 .try_into()
                 .expect("Should be a defined instruction");
-            let int3_b: Instruction = b
+            let int3_b: DecodeRule = b
                 .as_ref()
                 .try_into()
                 .expect("Should be a defined instruction");

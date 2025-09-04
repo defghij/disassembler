@@ -1,4 +1,6 @@
 mod instruction;
+mod decode;
+mod opcodes;
 mod tests;
 mod input;
 
