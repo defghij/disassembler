@@ -29,12 +29,14 @@ fn simple_test() {
 
 
 #[allow(unused)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub enum DecodeError {
     InvalidAddressingMode,
     IllegalAddressMode,
     InvalidOpCodeExtension,
     InvalidRegister,
+    InvalidAddress(u32),
+    AddressConflict(u32),
 }
 
 /// This structure attempts to encapsulates all the information

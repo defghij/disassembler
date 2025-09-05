@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use bitmask_enum::bitmask;
 
 use crate::decode::DecodeError;
@@ -6,6 +7,13 @@ use encoding::{
     extensions::{ExtSet, Extension},
 };
 use memory::{Register, Memory};
+
+pub trait Instruction {
+    fn instruction(&self) -> String;
+    fn bytes(&self) -> String;
+    fn length(&self) -> usize;
+    fn operands(&self) -> Vec<String>;
+}
 
 /// Possible Operand Encodings that are used to construct the
 /// the instruction decode rules. This is an intermediate type.
