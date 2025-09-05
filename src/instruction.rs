@@ -171,13 +171,13 @@ pub mod encoding {
     pub struct ModRM (
         /// MOD
         /// Only low two bits are valid
-        u8,
+        pub u8,
         /// REG
         /// Only low three bits are valid
-        u8,
+        pub u8,
         // RM
         // Only low three bits are valid
-        u8
+        pub u8
     ); 
     impl ModRM {
         pub const fn len() -> usize { 1 }

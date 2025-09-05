@@ -1,6 +1,6 @@
 use bitmask_enum::bitmask;
 
-use crate::opcodes::presumptive_decode_rules;
+use crate::opcodes::BYTE_TO_DECODE_RULES;
 use crate::instruction::{
     OpEn,                
     memory::{Register, Memory},
@@ -12,13 +12,19 @@ use crate::instruction::{
 };
 
 fn simple_test() {
+
     let cmp_ecx_edx: [u8;2] = [0x39, 0xD1];
     let first_byte = cmp_ecx_edx.get(0).unwrap();
-    let dc_rule = presumptive_decode_rules(*first_byte);
-    assert!(dc_rule.len() == 1);
-    //if dc_rule.modrm_required() {
-        //let modrm: Modrm = cmp_ecx_edx[1..2].try_from();
-    //}
+    let dc_rules = BYTE_TO_DECODE_RULES.get(first_byte)
+        .expect("Developer should have added key for CMP");
+
+    assert!(dc_rules.len() == 1);
+    let dc_rule = dc_rules.get(0).expect("Should be only one element");
+
+    if dc_rule.modrm_required() {
+        let second_byte =  cmp_ecx_edx.get(1).expect("Should be two bytes in array");
+        let modrm: ModRM = ModRM::try_from(*second_byte).unwrap();
+    }
 }
 
 
