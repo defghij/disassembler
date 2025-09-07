@@ -1,9 +1,9 @@
-
 use crate::decode::DecodeError;
 use encoding::{
     Displacement, Immediate,
 };
 use memory::{Register, Memory};
+
 
 /// Possible Operand Encodings that are used to construct the
 /// the instruction decode rules. This is an intermediate type.
