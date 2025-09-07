@@ -1,19 +1,9 @@
-use std::fmt::Display;
-use bitmask_enum::bitmask;
 
 use crate::decode::DecodeError;
 use encoding::{
-    Prefix, OpCode, ModRM, Sib, Displacement, Immediate,
-    extensions::{ExtSet, Extension},
+    Displacement, Immediate,
 };
 use memory::{Register, Memory};
-
-pub trait Instruction {
-    fn instruction(&self) -> String;
-    fn bytes(&self) -> String;
-    fn length(&self) -> usize;
-    fn operands(&self) -> Vec<String>;
-}
 
 /// Possible Operand Encodings that are used to construct the
 /// the instruction decode rules. This is an intermediate type.
@@ -26,6 +16,7 @@ pub enum OpEn {
     /// Treat Moffs as Imm32
     FD, TD,
 } 
+#[allow(unused)]
 impl OpEn {
     pub fn modrm_required(&self) -> bool {
         match self {
@@ -188,8 +179,9 @@ pub mod encoding {
         pub u8
     ); 
     impl ModRM {
-        pub const fn len() -> usize { 1 }
+        pub const fn _len() -> usize { 1 }
 
+        #[allow(unused)]
         fn syntax(&self) -> Result<String,DecodeError>  {
             match self.0 {
                 0b00 => {
@@ -233,7 +225,7 @@ pub mod encoding {
         u8
     ); 
     impl Sib {
-        pub const fn len() -> usize { 1 }
+        pub const fn _len() -> usize { 1 }
 
         /// Returns the format str that can be used to print an instruction. 
         fn _format_string(&self, modrm: ModRM) -> &str {
@@ -280,11 +272,12 @@ pub mod encoding {
     impl Displacement {
         /// The number of bytes contained in the Displacement
         /// as seen on disk or in a file
-        pub fn len(&self) -> usize {
+        pub fn _len(&self) -> usize {
             unimplemented!("TODO")
         }
     }
 
+    #[allow(unused)]
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub enum Immediate {
         Imm8(u8),

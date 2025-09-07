@@ -13,18 +13,14 @@ use super::{
     }
 };
 
-
-/// Byte --> Presumptive Decode Rules mapping
-pub type InsMap = Map<u8, &'static [DecodeRule]>;
-
 /// Returns a Vector of possible ways to decode the current and
 /// potentially follow on bytes based _only_ on a single byte.
 ///
 /// *Assumption*:
 /// Relies on the assumption that the [`Map<u8,DecodeRule>`]s contained
 /// in OPCODES has a one-to-one relationship between key,value pairs.
-pub fn presumptive_decode_rules(key: u8) -> &'static[DecodeRule] {
-    let dc_rules = BYTE_TO_DECODE_RULES.get(&key);
+pub fn _presumptive_decode_rules(key: u8) -> &'static[DecodeRule] {
+    let _dc_rules = DECODE_RULES.get(&key);
 
     unimplemented!("lol");
 }
@@ -79,7 +75,8 @@ macro_rules! ins3 {
     };
 }
 
-pub static BYTE_TO_DECODE_RULES: Map<u8, &'static [DecodeRule]> = phf_map! {
+#[allow(unused)]
+pub static DECODE_RULES: Map<u8, &'static [DecodeRule]> = phf_map! {
 //  Byte -->     Mnemonic       OpCode    Extensions      OpEncoding      Addressing Modes
     0x01 => &[ins3!("add",      [0x01],       ["/r"],       OpEn::MR, [0b00,0b01,0b10,0b11])],
     0x03 => &[ins3!("add",      [0x03],       ["/r"],       OpEn::RM, [0b00,0b01,0b10,0b11])],

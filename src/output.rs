@@ -1,7 +1,9 @@
 use std::fmt::Display;
 
-use crate::decode::DecodeError;
-use crate::instruction::Instruction;
+use crate::decode::{
+    DecodeError, 
+    Bytes,
+};
 
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -11,19 +13,16 @@ pub struct Line {
     /// Address
     address: Offset, 
     /// Instruction (Trait)
-    instruction: DecodedBytes
+    instruction: Bytes
 }
 impl Line{
-    pub fn update<F>(&mut self, f: F) -> &mut Self where F: FnOnce(&mut Self) -> &mut Self {
-        f(self)
-    }
     fn string_with_width(&self, width: usize) -> String {
         let label = if self.labeled { format!("{}h:\n", self.address) }
         else { "".into() };
 
         let bytes = self.instruction.bytes();
         let address = &self.address.0;
-        let instruction = self.instruction.instruction();
+        let instruction = self.instruction.string();
         let width = width * 2 + 4;
 
         format!("{label}{address:08X}: {bytes: <width$} {instruction}", width = width)
@@ -35,7 +34,7 @@ impl Display for Line {
         else { "".into() };
 
         let bytes = self.instruction.bytes();
-        let instruction = self.instruction.instruction();
+        let instruction = self.instruction.string();
 
         write!(f, "{label}{bytes} {instruction}")
     }
@@ -44,6 +43,7 @@ impl Display for Line {
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Offset(pub u32);
+#[allow(unused)]
 impl Offset {
     pub fn increment(&mut self, bytes: u32) { self.0 += bytes; }
 }
@@ -54,17 +54,19 @@ impl Display for Offset {
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
-pub struct OutputLines {
+pub struct Output {
     lines: Vec<Option<Line>>,
     pointer: Offset,
     width: usize
 }
-impl OutputLines {
-    pub fn new(bytes: usize) -> OutputLines {
+
+#[allow(unused)]
+impl Output {
+    pub fn new(bytes: usize) -> Output {
         let mut lines: Vec<Option<Line>> = Vec::with_capacity(bytes);
         for _ in 0..bytes { lines.push(None); }
 
-        OutputLines {lines, ..Default::default() }
+        Output {lines, ..Default::default() }
     }
 
     fn update<F>(&mut self, offset: Offset, update: F) -> Result<(), DecodeError>
@@ -91,7 +93,7 @@ impl OutputLines {
 
     /// Add instruction to the Output at the location pointed 
     /// by the internal Offset pointer
-    pub fn add(&mut self, i: DecodedBytes) -> Result<(), DecodeError> {
+    pub fn add(&mut self, i: Bytes) -> Result<(), DecodeError> {
         let address = &self.pointer.clone();
         self.update(self.pointer.clone(),
             |line| { 
@@ -111,7 +113,7 @@ impl OutputLines {
         Ok(())
     }
 }
-impl Display for OutputLines {
+impl Display for Output {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let width = self.width;
         let lines = self.lines
@@ -129,56 +131,41 @@ impl Display for OutputLines {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
-pub struct DecodedBytes {
-    bytes: Vec<u8>,
-    instruction: String,
-}
-impl DecodedBytes {
-    pub fn new(bytes: Vec<u8>, instruction: String) -> DecodedBytes {
-        DecodedBytes { bytes, instruction }
-    }
-}
-impl Instruction for DecodedBytes {
-    fn instruction(&self) -> String {
-        self.instruction.clone()
-    }
 
-    fn bytes(&self) -> String {
-        self.bytes
-            .iter().map(|b| format!("{b:02X}") )
-            .collect::<Vec<String>>()
-            .join(" ")
-    }
-
-    fn length(&self) -> usize {
-        self.bytes.len()
-    }
-
-    fn operands(&self) -> Vec<String> {
-        unimplemented!("lol");
-    }
-}
 
 #[test]
 fn single_line() {
     let expected = vec![
         "00000000: 74 0F    jz offset_00000018h"
     ].join("\n");
-    let mut output = OutputLines::new(11);
+    let mut output = Output::new(11);
 
-    let jz   = DecodedBytes::new(vec![0x74, 0x0F],      "jz offset_00000018h".into());
+    let jz   = Bytes::Decoded {bytes: vec![0x74, 0x0F], instruction: "jz offset_00000018h".into() };
 
     let _ = output.add(jz);
     assert_eq!(format!("{output}"), expected);
 }
 
 #[test]
-fn illegal_instruction() {
-}
-
-#[test]
 fn unknown_byte() {
+    let expected = vec![
+        "00000000: 58     pop eax",
+        "00000001: 8F     db 0x8F",
+        "00000002: C0     db 0xC0",                
+    ].join("\n");
+    let pop  = Bytes::Decoded { 
+        bytes: vec![0x58], 
+        instruction: "pop eax".into()
+    };
+    let ub1 = Bytes::Uknown(0x8f);
+    let ub2 = Bytes::Uknown(0xC0);
+    let mut output = Output::new(3);
+
+    let _ = output.add(pop);
+    let _ = output.add(ub1);
+    let _ = output.add(ub2);
+
+    assert_eq!(format!("{output}"), expected);
 }
 
 #[test]
@@ -189,11 +176,20 @@ fn multiple_line() {
         "00000005: 01 D1      add ecx,edx",                
     ].join("\n");
 
-    let jz   = DecodedBytes::new(vec![0x74, 0x0F],      "jz offset_00000018h".into());
-    let mova = DecodedBytes::new(vec![0x8B, 0x4D,0x0C], "mov ecx,[ebp+0x0000000c]".into());    
-    let add  = DecodedBytes::new(vec![0x01, 0xD1],      "add ecx,edx".into());                 
+    let jz   = Bytes::Decoded { 
+        bytes: vec![0x74, 0x0F], 
+        instruction: "jz offset_00000018h".into()
+    };
+    let mova = Bytes::Decoded { 
+        bytes: vec![0x8B, 0x4D,0x0C],
+        instruction: "mov ecx,[ebp+0x0000000c]".into()
+    };
+    let add  = Bytes::Decoded { 
+        bytes: vec![0x01, 0xD1],
+        instruction: "add ecx,edx".into()
+    };                 
 
-    let mut output = OutputLines::new(11);
+    let mut output = Output::new(11);
 
     let _ = output.add(jz);
     let _ = output.add(mova);
@@ -211,10 +207,16 @@ fn with_label() {
         "00000002: 01 D1    add ecx,edx",                
     ].join("\n");               
 
-    let jz   = DecodedBytes::new(vec![0x74, 0x0F],      "jz offset_00000018h".into());
-    let add  = DecodedBytes::new(vec![0x01, 0xD1],      "add ecx,edx".into());                 
+    let jz   = Bytes::Decoded { 
+        bytes: vec![0x74, 0x0F], 
+        instruction: "jz offset_00000018h".into()
+    };
+    let add  = Bytes::Decoded { 
+        bytes: vec![0x01, 0xD1],
+        instruction: "add ecx,edx".into()
+    };                 
 
-    let mut output = OutputLines::new(11);
+    let mut output = Output::new(11);
 
     let _ = output.add(jz);
     let _ = output.label(Offset(0x2));
