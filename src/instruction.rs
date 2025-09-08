@@ -18,6 +18,7 @@ impl Instruction {
         i.mnemonic = mnemonic;
         i
     }
+
     pub fn add(&mut self, op: Operand) -> &mut Self {
         self.operands.push(op);
         self
@@ -35,6 +36,7 @@ impl Instruction {
     ///
     /// Specifically, this is only for instructions with the OpEn::D encoding.
     /// These will have only one operand.
+    #[allow(unused)] // Currently, only used in tests
     pub fn get_displacement_offset(&self) -> Option<Offset> {
         let offsets: Vec<Offset> = self.operands
             .iter()
@@ -53,6 +55,7 @@ impl Instruction {
         } else { None }
     }
 
+    #[allow(unused)] // Currently, not used. Remove in future if unused.
     fn convert_displacements_to_offsets(&self) -> bool {
         match self.mnemonic {
             "call" | "jmp" | "jz" | "jnz" | "jne" => true,
@@ -433,6 +436,7 @@ pub mod encoding {
         impl Displacement {
             /// The number of bytes contained in the Displacement
             /// as seen on disk or in a file
+            #[allow(unused)]
             pub fn len(&self) -> usize {
                 match self {
                     Displacement::Rel8(_) => 1,
@@ -637,6 +641,9 @@ pub mod encoding {
                     Extension::ID => Some(4),
                     Extension::RD => Some(0),
                     Extension::RW => Some(0),
+                    Extension::Rel8  => Some(1),
+                    Extension::Rel16 => Some(2),
+                    Extension::Rel32 => Some(4),
                     _ => None, // Do the others encode operand length?
                 }
             }

@@ -128,7 +128,7 @@ type RulesMap = Map<&'static str, Rules>;
 
 #[allow(unused)]
 static DECODE_RULES: RulesMap = phf_map! {
-//  Byte -->     Mnemonic       OpCode    Extensions      OpEncoding      Addressing Modes
+//   Byte -->      Mnemonic       OpCode    Extensions         OpEncoding       Addressing Modes
     "0x01" => &[ins3!("add",      [0x01],       ["/r"],          OpEn::MR, [0b00,0b01,0b10,0b11])],
     "0x03" => &[ins3!("add",      [0x03],       ["/r"],          OpEn::RM, [0b00,0b01,0b10,0b11])],
     "0x05" => &[ins1!("add",      [0x05],       ["id"],          OpEn::I                        )],
@@ -214,6 +214,3 @@ static DECODE_RULES: RulesMap = phf_map! {
     // This guy breaks the table formatting even more and she's unique, it'll be fine down here
     "0xF2" => &[ins2!("repne cmpsd", 0xF2, [0xA7],            OpEn::ZO                       )],
 };
-
-
-

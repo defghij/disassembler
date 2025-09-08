@@ -84,21 +84,23 @@ impl Bytes {
 
         let (mnemonic, prefix, op_code, extensions, op_encode, addr_modes) = rule.separate();
 
+        let byte = bytes[0];
+        let opcode: u8 = op_code.0[0];
+        let instruction_length = rule.len();
+        let opcode_length = rule.op_code().len();
+        let mut instruction = Instruction::new(mnemonic);
+
         match op_encode {
             OpEn::O => {
-                let byte = bytes[0];
 
                 // All Single byte OpEn::O instructions _should have one and only one extension
                 // "/rd"
                 if extensions.is_some_and(|ext| ext.len() ==1 && ext[0] == Extension::RD) { 
-                    let opcode: u8 = op_code.0[0]; // Single byte Opcode by virtue of being in this
-                                                   // function
                     let reg_value = byte - opcode;
 
                     let register = Register::try_from(reg_value)
                         .expect("Opcde and Byte should be within the register range");
 
-                    let mut instruction = Instruction::new(mnemonic);
                     instruction.add(Operand::Register(register));
 
                     Bytes::Decoded {
@@ -110,11 +112,13 @@ impl Bytes {
                 else { Bytes::Uknown(byte) }
             },
             OpEn::ZO => {
-                assert!(extensions.is_none());
-                Bytes::Decoded {
-                    bytes: vec![bytes[0]],
-                    instruction: Instruction::new(mnemonic).clone()
+                if extensions.is_none() { 
+                    Bytes::Decoded {
+                        bytes: vec![bytes[0]],
+                        instruction: instruction.clone()
+                    }
                 }
+                else { Bytes::Uknown(bytes[0]) } 
             },
             OpEn::I => {
                 // Validate instruction assumptions.
@@ -129,8 +133,7 @@ impl Bytes {
                         else { return Bytes::Uknown(bytes[0]); }
                     },
                     Extension::IW => {
-                        println!("w");
-                        unimplemented!()
+                        unimplemented!("Opcode Extension for immediate word is not implemented")
                     },
                     Extension::IB => {
                         if bytes.len() == 2 { Immediate::Imm8(bytes[1..2].to_vec()) }
@@ -138,8 +141,6 @@ impl Bytes {
                     },
                     _ => return Bytes::Uknown(bytes[0])
                 };
-
-                let mut instruction = Instruction::new(mnemonic);
 
                 if rule.implicit_operand().is_some() {
                     let register = rule.implicit_operand().unwrap();
@@ -153,14 +154,12 @@ impl Bytes {
                 }
             }
             OpEn::D => {
-                let instruction_length = rule.len();
-                let opcode_length = rule.op_code().len();
                 let displacement_length = instruction_length - opcode_length;
 
                 let range = (opcode_length.. opcode_length + displacement_length);
-                println!("bytes: {bytes:?}"); // |4|
-                println!("lengths; bytes {}, opcode {}, displacement {}", bytes.len(), opcode_length, displacement_length );  // 1 3
-                println!("range: {range:?}"); // 3..6
+                //println!("bytes: {bytes:?}"); // |4|
+                //println!("lengths; bytes {}, opcode {}, displacement {}", bytes.len(), opcode_length, displacement_length );  // 1 3
+                //println!("range: {range:?}"); // 3..6
                 let displacement_bytes = bytes.get(range).expect("Displacement range should be correct");
 
                 let displacement = match displacement_length {
@@ -190,8 +189,40 @@ impl Bytes {
                 }
             }
             OpEn::OI => {
+                if extensions.is_none() { Bytes::Uknown(bytes[0]) } 
+                else {
+                    let extensions = extensions.expect("Should be some due to conditional");
+                    let mut instruction = Instruction::new(mnemonic);
 
-                unimplemented!("Operand Encoding not implemented")
+                    if extensions.contains(&Extension::RD) {
+                        let reg_value = byte - opcode;
+
+                        let register = Register::try_from(reg_value)
+                            .expect("Opcde and Byte should be within the register range");
+
+                        instruction.add(Operand::Register(register));
+
+                    }
+
+                    if extensions.contains(&Extension::IB) { 
+                        let imm = Immediate::Imm8(bytes[1..2].to_vec());
+                        instruction.add(Operand::Immediate(imm));
+                    }
+
+                    if extensions.contains(&Extension::IW) { 
+                        unimplemented!("Opcode Extension for immediate word is not implemented")
+                    }
+
+                    if extensions.contains(&Extension::ID) { 
+                        let imm = Immediate::Imm32(bytes[1..5].to_vec());
+                        instruction.add(Operand::Immediate(imm));
+                    }
+
+                    Bytes::Decoded {
+                        bytes: bytes.to_vec(),
+                        instruction: instruction.clone()
+                    }
+                }
             }
             _ => unimplemented!("Operand Encoding not implemented"),
         }
@@ -259,41 +290,34 @@ impl DecodeRule {
             return 1;
         }
 
-        // We have a single immediate operand. Extension will encode the operand length.
-        if op_encoding == OpEn::I {
-            let extensions = extensions.as_ref().expect("All Rules with an OpEn::I should require an extension");
+        // This match statement currently has a lot of duplicated code. If iterating over extension
+        // operand length turns out to be sufficient this can be reduced/removed.
+        match op_encoding {
+            OpEn::I | OpEn::OI | OpEn::D => {
+                let extensions = extensions.as_ref().expect("All Rules with an OpEn::OI should require an extension");
+                let bytes = extensions.iter()
+                    .filter(|ext| ext.operand_length().is_some())
+                    .fold(0, |acc, ext| acc + ext.operand_length().expect("Should be some due to fiter") );
 
-            if extensions.len() == 1 {
-                let ext = extensions[0].clone();
-                let bytes = ext.operand_length().expect("Extension should encode operand length for OpEn::I");
-                return op_code.len() + bytes
-            }
+                op_code.len() + bytes
+            },
+            OpEn::RM => unimplemented!("`len not implemented for this Operand Encoding"),
+            OpEn::MR => unimplemented!("`len not implemented for this Operand Encoding"),
+            OpEn::MI => unimplemented!("`len not implemented for this Operand Encoding"),
+            OpEn::M => unimplemented!("`len not implemented for this Operand Encoding"),
+            OpEn::NP => unimplemented!("`len not implemented for this Operand Encoding"),
+            OpEn::ZO => unimplemented!("`len not implemented for this Operand Encoding"),
+            OpEn::ZO => unimplemented!("`len not implemented for this Operand Encoding"),
+            OpEn::O => unimplemented!("`len not implemented for this Operand Encoding"),
+            OpEn::FD => unimplemented!("`len not implemented for this Operand Encoding"),
+            OpEn::TD => unimplemented!("`len not implemented for this Operand Encoding"),
         }
 
-        if op_encoding == OpEn::D {
-            // Form is OpCode + Relative Displacement
-            let extensions = extensions.as_ref().expect("All Rules with an OpEn::I should require an extension");
-                let rel8  = extensions.contains(&Extension::Rel8)  && extensions.contains(&Extension::Rel8 );
-                let rel16 = extensions.contains(&Extension::Rel16) && extensions.contains(&Extension::Rel16);
-                //let rel32 = extensions.contains(&Extension::Rel32) && extensions.contains(&Extension::Rel32);
-
-            let bytes = if rel8 { 1 } else if rel16 { 2 } else { 4 }; 
-
-            return op_code.bytes().len() + bytes;
-        }
-        if op_encoding == OpEn::OI {
-            let extensions = extensions.as_ref().expect("All Rules with an OpEn::OI should require an extension");
-            let bytes = extensions.iter()
-                .filter(|ext| ext.operand_length().is_some())
-                .fold(0, |acc, ext| acc + ext.operand_length().expect("Should be some due to fiter") );
-            return op_code.bytes().len() + bytes;
-        }
-
-        let mut len: usize = 0; 
-        if self.1.is_some() { len += 1; }
+        //let mut len: usize = 0; 
+        //if self.1.is_some() { len += 1; }
         //len += self.2.len();
         
-        unimplemented!("How do?")
+        //unimplemented!("How do?")
     }
 
     pub fn modrm_required(&self) -> bool {

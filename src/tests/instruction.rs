@@ -110,7 +110,7 @@ pub mod compendium {
     #[test]
     fn opcode_and_immediate() {
         let mapping: Vec<(&str, &[u8])> = vec![
-            ("mov ebx, 0xAABBCCDD", &[0xBB, 0xDD, 0xCC, 0xBB, 0xAA]),
+            ("00000000: BB DD CC BB AA     mov ebx, 0xAABBCCDD", &[0xBB, 0xDD, 0xCC, 0xBB, 0xAA]),
         ];
         mapping.iter()
             .for_each(|(s,b)| { check(s.to_string(),b); });
