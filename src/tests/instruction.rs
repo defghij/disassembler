@@ -1,55 +1,110 @@
-// This contains tests from the course 
-//#[cfg(test)]
-//pub mod compendium {
-    //use crate::decode::DecodeRule;
+ //This contains tests from the course 
+#[cfg(test)]
+pub mod compendium {
+    use crate::{
+        opcodes::DecodeRules,
+        decode::{
+            DecodeRule,
+            Bytes,
+        },
+        output::Output
+    };
 
-    //#[inline(always)]
-    //fn check_instructions(mapping: Vec<(&str, &[u8])>) {
-        //mapping.iter().for_each(|(s,b)|{
-            //let int3_s: DecodeRule = s
-                //.to_string()
-                //.try_into()
-                //.expect("Should be a defined instruction");
-            //let int3_b: DecodeRule = b
-                //.as_ref()
-                //.try_into()
-                //.expect("Should be a defined instruction");
-            //assert_eq!(int3_s, int3_b);
-        //});
-    //}
+    fn zero_operand_full(expected: String, byte: &[u8]) {
+        assert!(byte.len() == 1);
 
-    //#[test]
-    //fn zero() {
-        //let mapping: Vec<(&str, &[u8])> = vec![
-            //("int3", &[0xCC]),
-            //("cdp", &[0x99]),
-            //("ret", &[0xC3]),
-            //("ret", &[0xCB]),
-        //];
-        //check_instructions(mapping);
-    //}
+        let rules = DecodeRules::get(&byte[0])
+            .expect("Should be a defined opcode mapping");
+        assert!(rules.len() == 1);
 
-    //#[test]
-    //fn opcode() {
-        //let mapping: Vec<(&str, &[u8])> = vec![
-            //("dec ebx",  &[0x4B]),
-            //("inc eax",  &[0x40]),
-            //("dec eax",  &[0x48]),
-            //("push ecx", &[0x51]),
-            //("pop edi",  &[0x5F]),
-        //];
-        //check_instructions(mapping);
-    //}
+        let dc_rule: &DecodeRule = rules.get(0).expect("Should be only one element");
+        assert!(dc_rule.len() == 1);
 
-    //#[test]
-    //fn immediate() {
-        //let mapping: Vec<(&str, &[u8])> = vec![
-            //("push 0xAABBCCDD",     &[0x68, 0xDD, 0xCC, 0xBB, 0xAA]),
-            //("int 3",               &[0xCD, 0x03                  ]),
-            //("add eax, 0xAABBCCDD", &[0x05, 0xDD, 0xCC, 0xBB, 0xAA]),
-        //];
-        //check_instructions(mapping);
-    //}
+        let instruction = format!("{dc_rule}");
+        let bytes = dc_rule.op_code().bytes();
+        let instruction = Bytes::Decoded { bytes, instruction };
+
+
+        let mut output = Output::new(1);
+        output.add(instruction).expect("This manually decoded instruction should be valid");
+        assert_eq!(output.to_string(), expected);
+    }
+
+
+    #[test]
+    fn zero() {
+        let mapping: Vec<(&str, &[u8])> = vec![
+            ("00000000: CC     int3", &[0xCC]),// not required by assignment
+            ("00000000: 99     cdq",  &[0x99]), // not require by assignment
+            ("00000000: C3     retn", &[0xC3]),
+            ("00000000: CB     retf", &[0xCB]),
+        ];
+        mapping.iter()
+            .for_each(|(s,b)| { zero_operand_full(s.to_string(),b); });
+    }
+
+    fn check_opcode(expected: String, byte: &[u8]) {
+        assert!(byte.len() == 1);
+
+        let rules = DecodeRules::get(&byte[0])
+            .expect("Should be a defined opcode mapping");
+        assert!(rules.len() == 1);
+
+        let rule: &DecodeRule = rules.get(0).expect("Should be only one element");
+        assert!(rule.len() == 1);
+        let decoded = Bytes::from(byte, rule.clone());
+
+        let mut output = Output::new(1);
+        output.add(decoded).expect("This manually decoded instruction should be valid");
+        assert_eq!(output.to_string(), expected);
+    }
+
+    #[test]
+    fn opcode() {
+        let mapping: Vec<(&str, &[u8])> = vec![
+            ("00000000: 4B     dec ebx",  &[0x4B]),
+            ("00000000: 40     inc eax",  &[0x40]),
+            ("00000000: 48     dec eax",  &[0x48]),
+            ("00000000: 51     push ecx", &[0x51]),
+            ("00000000: 5F     pop edi",  &[0x5F]),
+        ];
+        mapping.iter()
+            .for_each(|(s,b)| { check_opcode(s.to_string(),b); });
+    }
+
+    fn check_immediate(expected: String, bytes: &[u8]) {
+        assert!(bytes.len() >= 1);
+        println!("Checking\n:{expected}");
+
+        let rules = DecodeRules::get(&bytes[0])
+            .expect("Should be a defined opcode mapping");
+        let mut instruction = Bytes::Uknown(bytes[0]); // Set to error case.
+
+        for rule in rules { // We dont know which rule will decode into an instruction
+            let length = rule.len();
+            println!("rule reported byte length: {length}");
+            let prospective_bytes = bytes.get(0..length)
+                .expect("Test should have enough bytes for decoding instruction");
+            instruction = Bytes::from(prospective_bytes, rule.clone());
+            println!("{instruction:?}.length() = {}", instruction.length());
+            if instruction.decoded_successfully() { break; }
+        }
+
+        let mut output = Output::new(10);
+        output.add(instruction).expect("This manually decoded instruction should be valid");
+        assert_eq!(output.to_string(), expected);
+    }
+
+    #[test]
+    fn immediate() {
+        let mapping: Vec<(&str, &[u8])> = vec![
+            ("00000000: 68 DD CC BB AA     push 0xAABBCCDD",     &[0x68, 0xDD, 0xCC, 0xBB, 0xAA]),
+            ("00000000: CD 03     int 0x03",                     &[0xCD, 0x03                  ]),
+            ("00000000: 05 DD CC BB AA     add eax, 0xAABBCCDD", &[0x05, 0xDD, 0xCC, 0xBB, 0xAA]),
+        ];
+        mapping.iter()
+            .for_each(|(s,b)| { check_immediate(s.to_string(),b); });
+    }
 
     //#[test]
     //fn displacement() {
@@ -178,4 +233,4 @@
         //];
         //check_instructions(mapping);
     //}
-//}
+}

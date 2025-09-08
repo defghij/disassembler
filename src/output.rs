@@ -23,7 +23,7 @@ impl Line{
         let bytes = self.instruction.bytes();
         let address = &self.address.0;
         let instruction = self.instruction.string();
-        let width = width * 2 + 4;
+        let width = width + 4;
 
         format!("{label}{address:08X}: {bytes: <width$} {instruction}", width = width)
     }
@@ -102,7 +102,8 @@ impl Output {
             })?;
                               
         self.pointer.increment(i.length() as u32);
-        if self.width < i.length() { self.width = i.length(); }
+        let width = format!("{}", i.bytes()).len();
+        if self.width < width { self.width = width; }
         Ok(())
     }
 
@@ -127,6 +128,7 @@ impl Display for Output {
             .collect::<Vec<String>>()
             .join("\n");
 
+        println!("{lines}");
         write!(f, "{}", lines)
     }
 }
@@ -136,7 +138,7 @@ impl Display for Output {
 #[test]
 fn single_line() {
     let expected = vec![
-        "00000000: 74 0F    jz offset_00000018h"
+        "00000000: 74 0F     jz offset_00000018h"
     ].join("\n");
     let mut output = Output::new(11);
 
@@ -171,9 +173,9 @@ fn unknown_byte() {
 #[test]
 fn multiple_line() {
     let expected = vec![
-        "00000000: 74 0F      jz offset_00000018h",
-        "00000002: 8B 4D 0C   mov ecx,[ebp+0x0000000c]",
-        "00000005: 01 D1      add ecx,edx",                
+        "00000000: 74 0F        jz offset_00000018h",
+        "00000002: 8B 4D 0C     mov ecx,[ebp+0x0000000c]",
+        "00000005: 01 D1        add ecx,edx",                
     ].join("\n");
 
     let jz   = Bytes::Decoded { 
@@ -202,9 +204,9 @@ fn multiple_line() {
 #[test]
 fn with_label() {
     let expected = vec![
-        "00000000: 74 0F    jz offset_00000018h",
+        "00000000: 74 0F     jz offset_00000018h",
         "offset_00000002h:",
-        "00000002: 01 D1    add ecx,edx",                
+        "00000002: 01 D1     add ecx,edx",                
     ].join("\n");               
 
     let jz   = Bytes::Decoded { 

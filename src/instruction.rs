@@ -25,6 +25,24 @@ impl OpEn {
         }
     }
 
+    pub fn operand_count(&self) -> usize {
+        match self {
+            OpEn::RM => todo!(),
+            OpEn::MR => todo!(),
+            OpEn::MI => todo!(),
+            OpEn::M => todo!(),
+            OpEn::I => 1,
+            OpEn::NP => todo!(),
+            OpEn::ZO => 0,
+            OpEn::O  => 0,
+            OpEn::OI => todo!(),
+            OpEn::D => todo!(),
+            OpEn::FD => todo!(),
+            OpEn::TD => todo!(),
+        }
+
+    }
+
 }
 
 /// OperandEncoding as described by the Intel instruction manual
@@ -69,6 +87,8 @@ enum OperandEncoding {
 }
 
 pub mod memory {
+    use std::fmt::Display;
+
     use super::*;
 
     #[allow(unused)]
@@ -94,9 +114,9 @@ pub mod memory {
             }
         }
     }
-    impl Into<&str> for Register {
-        fn into(self) -> &'static str {
-            match self {
+    impl Display for Register {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let reg = match self {
                 Register::EAX => "eax",
                 Register::ECX => "ecx",
                 Register::EDX => "edx",
@@ -105,7 +125,8 @@ pub mod memory {
                 Register::EBP => "ebp",
                 Register::ESI => "esi",
                 Register::EDI => "edi",
-            }
+            };
+            write!(f, "{reg}")
         }
     }
 
@@ -114,6 +135,8 @@ pub mod memory {
 }
 
 pub mod encoding {
+    use std::fmt::Display;
+
     use super::*;
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -121,6 +144,10 @@ pub mod encoding {
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct OpCode(pub &'static [u8]);
+    impl OpCode {
+        pub fn len(&self) -> usize { self.0.len() }
+        pub fn bytes(&self) -> Vec<u8> { self.0.to_vec() }
+    }
 
     pub mod extensions {
         use super::*;
@@ -135,6 +162,16 @@ pub mod encoding {
             SR,
             S0, S1, S2, S3, S4, S5, S6, S7
 
+        }
+        impl Extension {
+            pub fn operand_length(&self) -> Option<usize> {
+                match self {
+                    Extension::IB => Some(1),
+                    Extension::IW => Some(2),
+                    Extension::ID => Some(4),
+                    _ => None, // Do the others encode operand length?
+                }
+            }
         }
         impl TryFrom<&'static str> for Extension {
             type Error = DecodeError;
@@ -280,9 +317,45 @@ pub mod encoding {
     #[allow(unused)]
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub enum Immediate {
-        Imm8(u8),
-        Imm16(u16),
-        Imm32(u32),
-        Imm64(u64),
+        Imm8(Vec<u8>),
+        Imm16(Vec<u8>),
+        Imm32(Vec<u8>),
+        Imm64(Vec<u8>),
+    } 
+    impl Immediate {
+        pub fn raw_bytes(&self) -> Vec<u8> {
+            let bytes = match self {
+                Immediate::Imm8(vec) =>  vec,
+                Immediate::Imm16(vec) => vec,
+                Immediate::Imm32(vec) => vec,
+                Immediate::Imm64(vec) => vec,
+            };
+            bytes.clone()
+        }
+    }
+    impl TryFrom<&[u8]> for Immediate {
+        type Error = DecodeError;
+
+        fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+            match value.len() {
+                1 => Ok(Immediate::Imm8(value.to_vec())),
+                2 => Ok(Immediate::Imm16(value.to_vec())),
+                4 => Ok(Immediate::Imm32(value.to_vec())),
+                8 => Ok(Immediate::Imm64(value.to_vec())),
+                _ => Err(DecodeError::InvalidImmediateSize(value.len()))
+
+            }
+        }
+    }
+    impl Display for Immediate {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let bytes = self.raw_bytes()
+                .iter()
+                .rev()
+                .map(|b| format!("{b:02X}"))
+                .collect::<Vec<String>>()
+                .join("");
+            write!(f, "0x{bytes}")
+        }
     }
 }
