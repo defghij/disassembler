@@ -1,8 +1,12 @@
 use std::fmt::Display;
 
-use crate::decode::{
-    DecodeError, 
-    Bytes,
+#[allow(unused)]
+use crate::{
+    decode::{ Bytes, DecodeError },
+    instruction::{
+        Instruction,
+        encoding::operands::{Operand, Offset, Register},
+    }
 };
 
 
@@ -17,12 +21,12 @@ pub struct Line {
 }
 impl Line{
     fn string_with_width(&self, width: usize) -> String {
-        let label = if self.labeled { format!("{}h:\n", self.address) }
+        let label = if self.labeled { format!("{}:\n", self.address) }
         else { "".into() };
 
         let bytes = self.instruction.bytes();
         let address = &self.address.0;
-        let instruction = self.instruction.string();
+        let instruction = self.instruction.to_string();
         let width = width + 4;
 
         format!("{label}{address:08X}: {bytes: <width$} {instruction}", width = width)
@@ -34,24 +38,12 @@ impl Display for Line {
         else { "".into() };
 
         let bytes = self.instruction.bytes();
-        let instruction = self.instruction.string();
+        let instruction = self.instruction.to_string();
 
         write!(f, "{label}{bytes} {instruction}")
     }
 }
 
-
-#[derive(Clone, Debug, PartialEq, Default)]
-pub struct Offset(pub u32);
-#[allow(unused)]
-impl Offset {
-    pub fn increment(&mut self, bytes: u32) { self.0 += bytes; }
-}
-impl Display for Offset {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "offset_{:08x}", self.0)
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Output {
@@ -142,7 +134,10 @@ fn single_line() {
     ].join("\n");
     let mut output = Output::new(11);
 
-    let jz   = Bytes::Decoded {bytes: vec![0x74, 0x0F], instruction: "jz offset_00000018h".into() };
+    let mut instruction = Instruction::new("jz");
+    instruction.add(Operand::Label(Offset(0x18)));
+
+    let jz   = Bytes::Decoded {bytes: vec![0x74, 0x0F], instruction: instruction.clone() };
 
     let _ = output.add(jz);
     assert_eq!(format!("{output}"), expected);
@@ -155,9 +150,12 @@ fn unknown_byte() {
         "00000001: 8F     db 0x8F",
         "00000002: C0     db 0xC0",                
     ].join("\n");
+
+    let mut instruction = Instruction::new("pop");
+    instruction.add(Operand::Register(Register::EAX));
     let pop  = Bytes::Decoded { 
         bytes: vec![0x58], 
-        instruction: "pop eax".into()
+        instruction: instruction.clone()
     };
     let ub1 = Bytes::Uknown(0x8f);
     let ub2 = Bytes::Uknown(0xC0);
@@ -173,29 +171,41 @@ fn unknown_byte() {
 #[test]
 fn multiple_line() {
     let expected = vec![
-        "00000000: 74 0F        jz offset_00000018h",
-        "00000002: 8B 4D 0C     mov ecx,[ebp+0x0000000c]",
-        "00000005: 01 D1        add ecx,edx",                
+        "00000000: 74 0F     jz offset_00000018h",
+        "00000002: 01 D1     add ecx, edx",                
+        //"00000004: 8B 4D 0C     mov ecx,[ebp+0x0000000c]",
     ].join("\n");
 
+    let mut jz = Instruction::new("jz");
+    jz.add(Operand::Label(Offset(0x18)));
+    println!("{jz}");
     let jz   = Bytes::Decoded { 
         bytes: vec![0x74, 0x0F], 
-        instruction: "jz offset_00000018h".into()
+        instruction: jz.clone()
     };
-    let mova = Bytes::Decoded { 
-        bytes: vec![0x8B, 0x4D,0x0C],
-        instruction: "mov ecx,[ebp+0x0000000c]".into()
-    };
+
+    let mut add = Instruction::new("add");
+    add.add(Operand::Register(Register::ECX))
+       .add(Operand::Register(Register::EDX));
+    println!("{add}");
     let add  = Bytes::Decoded { 
         bytes: vec![0x01, 0xD1],
-        instruction: "add ecx,edx".into()
+        instruction: add.clone()
     };                 
+    // Fix once I implement Displacement
+    //let mut mov = Instruction::new("mov");
+    //mov.add(Operand::));
+    //let mova = Bytes::Decoded { 
+        //bytes: vec![0x8B, 0x4D,0x0C],
+        //instruction: "mov ecx,[ebp+0x0000000c]".into()
+    //};
+    
 
     let mut output = Output::new(11);
 
     let _ = output.add(jz);
-    let _ = output.add(mova);
     let _ = output.add(add);
+    //let _ = output.add(mova);
 
     assert_eq!(format!("{output}"), expected);
 
@@ -206,16 +216,22 @@ fn with_label() {
     let expected = vec![
         "00000000: 74 0F     jz offset_00000018h",
         "offset_00000002h:",
-        "00000002: 01 D1     add ecx,edx",                
+        "00000002: 01 D1     add ecx, edx",                
     ].join("\n");               
 
+    let mut jz = Instruction::new("jz");
+    jz.add(Operand::Label(Offset(0x18)));
     let jz   = Bytes::Decoded { 
         bytes: vec![0x74, 0x0F], 
-        instruction: "jz offset_00000018h".into()
+        instruction: jz.clone()
     };
+
+    let mut add = Instruction::new("add");
+    add.add(Operand::Register(Register::ECX))
+       .add(Operand::Register(Register::EDX));
     let add  = Bytes::Decoded { 
         bytes: vec![0x01, 0xD1],
-        instruction: "add ecx,edx".into()
+        instruction: add.clone()
     };                 
 
     let mut output = Output::new(11);

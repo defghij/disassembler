@@ -33,3 +33,13 @@ offset_00000008h:
 00000008 C3 ret
 ```
 
+# Checking Test Cases
+
+One use `nasm` or `as` to directly pass bytes to the assembler and then use a disassembler to view the resulting instruction. For `nasm` we would use a file like:
+```asm
+[BITS 32]
+db 0x75
+db 0x0F
+```
+And confirm output via `nasm -f elfx32 assembly.s && objdump -d -M intel assembly.o`
+

@@ -1,35 +1,52 @@
  //This contains tests from the course 
 #[cfg(test)]
 pub mod compendium {
+    #[allow(unused)]
     use crate::{
-        opcodes::DecodeRules,
         decode::{
-            DecodeRule,
-            Bytes,
-        },
-        output::Output
+            Bytes, DecodeRule
+        }, instruction::{encoding::operands::Offset, Instruction}, opcodes::DecodeRules, output::Output
     };
 
-    fn zero_operand_full(expected: String, byte: &[u8]) {
-        assert!(byte.len() == 1);
+    fn check(expected: String, bytes: &[u8]) {
+        assert!(bytes.len() >= 1);
 
-        let rules = DecodeRules::get(&byte[0])
+        let mut output = Output::new(10);
+
+        let offset = Offset(0); // All test instructions start at Address Zero
+        println!("Checking\n:{expected}");
+
+        let rules = DecodeRules::get(&bytes[0])
             .expect("Should be a defined opcode mapping");
-        assert!(rules.len() == 1);
 
-        let dc_rule: &DecodeRule = rules.get(0).expect("Should be only one element");
-        assert!(dc_rule.len() == 1);
+        for rule in rules { // We dont know which rule will decode into an instruction
+            
+            let length = rule.len();
+            println!("rule reported byte length: {length}");
 
-        let instruction = format!("{dc_rule}");
-        let bytes = dc_rule.op_code().bytes();
-        let instruction = Bytes::Decoded { bytes, instruction };
+            let prospective_bytes = bytes.get(0..length)
+                .expect("Test should have enough bytes for decoding instruction");
 
+            let instruction = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
+            println!("Attempted Instruction\n:{instruction:?}");
 
-        let mut output = Output::new(1);
-        output.add(instruction).expect("This manually decoded instruction should be valid");
+            if instruction.decoded_successfully() {
+                println!("Decoded Instruction\n:{instruction:?}");
+                output.add(instruction.clone())
+                    .expect("This manually decoded instruction should be valid");
+                if rule.makes_label() {
+                    let label = instruction
+                        .get_instruction().expect("Should be a valid instruction due to the conditional above")
+                        .get_displacement_offset().expect("Should be an instruction that requires a label reference due to conditional");
+
+                    let _ = output.label(label); // Dont worry about the result in a test. We'll
+                                                 // regularly add labels "beyond" range
+                }
+                break; 
+            }
+        }
         assert_eq!(output.to_string(), expected);
     }
-
 
     #[test]
     fn zero() {
@@ -40,23 +57,7 @@ pub mod compendium {
             ("00000000: CB     retf", &[0xCB]),
         ];
         mapping.iter()
-            .for_each(|(s,b)| { zero_operand_full(s.to_string(),b); });
-    }
-
-    fn check_opcode(expected: String, byte: &[u8]) {
-        assert!(byte.len() == 1);
-
-        let rules = DecodeRules::get(&byte[0])
-            .expect("Should be a defined opcode mapping");
-        assert!(rules.len() == 1);
-
-        let rule: &DecodeRule = rules.get(0).expect("Should be only one element");
-        assert!(rule.len() == 1);
-        let decoded = Bytes::from(byte, rule.clone());
-
-        let mut output = Output::new(1);
-        output.add(decoded).expect("This manually decoded instruction should be valid");
-        assert_eq!(output.to_string(), expected);
+            .for_each(|(s,b)| { check(s.to_string(),b); });
     }
 
     #[test]
@@ -69,30 +70,7 @@ pub mod compendium {
             ("00000000: 5F     pop edi",  &[0x5F]),
         ];
         mapping.iter()
-            .for_each(|(s,b)| { check_opcode(s.to_string(),b); });
-    }
-
-    fn check_immediate(expected: String, bytes: &[u8]) {
-        assert!(bytes.len() >= 1);
-        println!("Checking\n:{expected}");
-
-        let rules = DecodeRules::get(&bytes[0])
-            .expect("Should be a defined opcode mapping");
-        let mut instruction = Bytes::Uknown(bytes[0]); // Set to error case.
-
-        for rule in rules { // We dont know which rule will decode into an instruction
-            let length = rule.len();
-            println!("rule reported byte length: {length}");
-            let prospective_bytes = bytes.get(0..length)
-                .expect("Test should have enough bytes for decoding instruction");
-            instruction = Bytes::from(prospective_bytes, rule.clone());
-            println!("{instruction:?}.length() = {}", instruction.length());
-            if instruction.decoded_successfully() { break; }
-        }
-
-        let mut output = Output::new(10);
-        output.add(instruction).expect("This manually decoded instruction should be valid");
-        assert_eq!(output.to_string(), expected);
+            .for_each(|(s,b)| { check(s.to_string(),b); });
     }
 
     #[test]
@@ -103,25 +81,40 @@ pub mod compendium {
             ("00000000: 05 DD CC BB AA     add eax, 0xAABBCCDD", &[0x05, 0xDD, 0xCC, 0xBB, 0xAA]),
         ];
         mapping.iter()
-            .for_each(|(s,b)| { check_immediate(s.to_string(),b); });
+            .for_each(|(s,b)| { check(s.to_string(),b); });
     }
 
-    //#[test]
-    //fn displacement() {
-        //let mapping: Vec<(&str, &[u8])> = vec![
-            //("jnz 0x80",        &[0x75, 0x6E                  ]),
-            //("call 0xAABBCCDD", &[0xE8, 0xD8, 0xBC, 0xBB, 0xAA]),
-        //];
-        //check_instructions(mapping);
-    //}
+    #[test]
+    fn displacement() {
+        let mapping: Vec<(&str, &[u8])> = vec![
+            // Output from nasm and objdump as baseline for test.
+            //0:   74 0f                   je     0x11
+            ("00000000: 74 0F     jz offset_00000011h",        &[0x74, 0x0F]),
 
-    //#[test]
-    //fn opcode_and_immediate() {
-        //let mapping: Vec<(&str, &[u8])> = vec![
-            //("mov ebx, 0xAABBCCDD", &[0xBB, 0xDD, 0xCC, 0xBB, 0xAA]),
-        //];
-        //check_instructions(mapping);
-    //}
+            //0:   75 0f                   jne    0x11
+            ("00000000: 75 0F     jnz offset_00000011h",        &[0x75, 0x0F]),
+
+            //0:   0f 84 d9 cc bb aa       je     0xaabbccdf
+            ("00000000: 0F 84 D9 CC BB AA     jz offset_AABBCCDFh", &[0x0F, 0x84, 0xD9, 0xCC, 0xBB, 0xAA]),
+
+            //0:   e8 d8 cc bb aa          call   0xaabbccdd
+            ("00000000: E8 D8 CC BB AA     call offset_AABBCCDDh", &[0xE8, 0xD8, 0xCC, 0xBB, 0xAA]),
+
+            //0:   e8 06 00 00 00          call   0xb
+            ("00000000: E8 06 00 00 00     call offset_0000000Bh", &[0xE8, 0x06, 0x00, 0x00, 0x00]),
+        ];
+        mapping.iter()
+            .for_each(|(s,b)| { check(s.to_string(),b); });
+    }
+
+    #[test]
+    fn opcode_and_immediate() {
+        let mapping: Vec<(&str, &[u8])> = vec![
+            ("mov ebx, 0xAABBCCDD", &[0xBB, 0xDD, 0xCC, 0xBB, 0xAA]),
+        ];
+        mapping.iter()
+            .for_each(|(s,b)| { check(s.to_string(),b); });
+    }
 
     //#[test]
     //fn m_rm() {

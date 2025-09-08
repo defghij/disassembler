@@ -4,15 +4,19 @@ use std::fmt::Display;
 
 use bitmask_enum::bitmask;
 
+use crate::instruction::encoding::operands::Offset;
 #[allow(unused)]
 use crate::{
     opcodes::DecodeRules,
     instruction::{
+        Instruction,
         OpEn,                
-        memory::{
-            Register, Memory},
+        memory::Memory,
         encoding::{
-            Prefix, OpCode, ModRM, Sib, Displacement, Immediate,
+            operands::{
+                Operand, Displacement, Immediate, Register
+            },
+            Prefix, OpCode, ModRM, Sib,
             AddressingModes,
             extensions::{ExtSet, Extension},
         }
@@ -25,7 +29,7 @@ pub enum Bytes {
     /// Bytes representing a decoded instruction.
     Decoded { 
         bytes: Vec<u8>,
-        instruction: String,
+        instruction: Instruction,
     },
     /// An unknown byte or opcode
     Uknown(u8),
@@ -42,13 +46,18 @@ impl Bytes {
         }
     }
 
-    pub fn string(&self) -> String {
+    pub fn get_instruction(&self) -> Option<Instruction> {
         match self {
-            Bytes::Decoded { bytes: _ , instruction } => instruction.clone(),
-            Bytes::Uknown(b) | Bytes::Illegal(b)  => format!("db 0x{b:02X}"),
-            Bytes::None => "".into()
+            Bytes::Decoded { bytes, instruction } => Some(instruction.clone()),
+            _ => None
         }
-        //self.instruction.clone()
+    }
+
+    pub fn get_bytes(&self) -> Option<Instruction> {
+        match self {
+            Bytes::Decoded { bytes, instruction } => Some(instruction.clone()),
+            _ => None
+        }
     }
 
     fn raw_bytes(&self) -> Vec<u8> {
@@ -70,7 +79,7 @@ impl Bytes {
         self.raw_bytes().len()
     }
 
-    pub fn from(bytes: &[u8], rule: DecodeRule) -> Bytes {
+    pub fn from(location: Offset, bytes: &[u8], rule: DecodeRule) -> Bytes {
         if bytes.len() == 0 { return Bytes::None }
 
         let (mnemonic, prefix, op_code, extensions, op_encode, addr_modes) = rule.separate();
@@ -88,10 +97,13 @@ impl Bytes {
 
                     let register = Register::try_from(reg_value)
                         .expect("Opcde and Byte should be within the register range");
-                    let instruction = format!("{mnemonic} {register}");
+
+                    let mut instruction = Instruction::new(mnemonic);
+                    instruction.add(Operand::Register(register));
+
                     Bytes::Decoded {
                         bytes: vec![byte],
-                        instruction
+                        instruction: instruction.clone()
                     }
 
                 }
@@ -101,55 +113,107 @@ impl Bytes {
                 assert!(extensions.is_none());
                 Bytes::Decoded {
                     bytes: vec![bytes[0]],
-                    instruction: mnemonic.to_string()
+                    instruction: Instruction::new(mnemonic).clone()
                 }
             },
             OpEn::I => {
                 // Validate instruction assumptions.
                 if op_code.len() != 1   { return Bytes::Uknown(bytes[0]); }
                 if extensions.is_none() { return Bytes::Uknown(bytes[0]); }
-
-                let extensions = extensions.expect("Should be Some due to conditional above");
+                let extensions = extensions.unwrap();
                 if extensions.len() != 1 { return Bytes::Uknown(bytes[0]); }
 
-                match extensions[0] {
+                let immediate = match extensions[0] {
                     Extension::ID => {
-                        if bytes.len() != 5 { Bytes::Uknown(bytes[0]) }
-                        else {
-                            let imm = Immediate::Imm32(bytes[1..5].to_vec());
-
-                            Bytes::Decoded {
-                                bytes: bytes.to_vec(),
-                                instruction: format!("{rule} {imm}")
-                            }
-                        }
+                        if bytes.len() == 5 { Immediate::Imm32(bytes[1..5].to_vec()) }
+                        else { return Bytes::Uknown(bytes[0]); }
                     },
                     Extension::IW => {
                         println!("w");
                         unimplemented!()
                     },
                     Extension::IB => {
-                        let imm = Immediate::Imm8(bytes[1..2].to_vec());
-
-                        Bytes::Decoded {
-                            bytes: bytes.to_vec(),
-                            instruction: format!("{rule} {imm}")
-                        }
+                        if bytes.len() == 2 { Immediate::Imm8(bytes[1..2].to_vec()) }
+                        else { return Bytes::Uknown(bytes[0]); }
                     },
-                    _ => Bytes::Uknown(bytes[0])
+                    _ => return Bytes::Uknown(bytes[0])
+                };
+
+                let mut instruction = Instruction::new(mnemonic);
+
+                if rule.implicit_operand().is_some() {
+                    let register = rule.implicit_operand().unwrap();
+                    instruction.add(Operand::Register(register));
+                }
+                instruction.add(Operand::Immediate(immediate));
+
+                Bytes::Decoded {
+                    bytes: bytes.to_vec(),
+                    instruction: instruction.clone()
                 }
             }
-            _ => Bytes::Uknown(bytes[0]),
+            OpEn::D => {
+                let instruction_length = rule.len();
+                let opcode_length = rule.op_code().len();
+                let displacement_length = instruction_length - opcode_length;
+
+                let range = (opcode_length.. opcode_length + displacement_length);
+                println!("bytes: {bytes:?}"); // |4|
+                println!("lengths; bytes {}, opcode {}, displacement {}", bytes.len(), opcode_length, displacement_length );  // 1 3
+                println!("range: {range:?}"); // 3..6
+                let displacement_bytes = bytes.get(range).expect("Displacement range should be correct");
+
+                let displacement = match displacement_length {
+                    1 => {
+                        let operands = <[u8;1]>::try_from(displacement_bytes).expect("Displacement length calculation should be correct");
+                        Displacement::from_byte(location,opcode_length, &operands)
+                    },
+                    2 => {
+                        let operands = <[u8;2]>::try_from(displacement_bytes).expect("Displacement length calculation should be correct");
+                        Displacement::from_word(location,opcode_length, &operands)
+                    }, 
+                    4 => {
+                        let operands = <[u8;4]>::try_from(displacement_bytes).expect("Displacement length calculation should be correct");
+                        println!("Operands: {}", operands.iter().map(|b| format!("{b:X}")).collect::<Vec<String>>().join(" "));
+                        let d = Displacement::from_double(location,opcode_length, &operands);
+                        println!("displace: {d}");
+                        d
+                    },
+                    _ => return Bytes::Uknown(bytes[0])
+                };
+                let mut instruction = Instruction::new(mnemonic);
+                instruction.add(Operand::Displacement(displacement));
+
+                Bytes::Decoded {
+                    bytes: bytes.to_vec(),
+                    instruction: instruction.clone(),
+                }
+            }
+            OpEn::OI => {
+
+                unimplemented!("Operand Encoding not implemented")
+            }
+            _ => unimplemented!("Operand Encoding not implemented"),
         }
 
     }
 
     pub fn operands(&self) -> Option<Vec<String>> { unimplemented!("lol"); }
-    pub fn mnemonic(&self) -> Option<String> { unimplemented!("lol"); }
+    pub fn mnemonic(&self) -> Option<String> { unimplemented!("not yet"); }
     pub fn prefix(&self) -> Option<String> { unimplemented!("lol"); }
 }
 impl Default for Bytes {
     fn default() -> Self { Bytes::None }
+}
+impl Display for Bytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
+            Bytes::Decoded { bytes: _ , instruction } => format!("{instruction}"),
+            Bytes::Uknown(b) | Bytes::Illegal(b)  => format!("db 0x{b:02X}"),
+            Bytes::None => "".into()
+        };
+        write!(f, "{string}")
+    }
 }
 
 
@@ -164,7 +228,8 @@ pub enum DecodeError {
     InvalidRegister,
     InvalidAddress(u32),
     AddressConflict(u32),
-    InvalidImmediateSize(usize)
+    InvalidImmediateSize(usize),
+    InvalidDisplacementByteWidth,
 }
 
 /// This structure attempts to encapsulates all the information
@@ -196,7 +261,7 @@ impl DecodeRule {
 
         // We have a single immediate operand. Extension will encode the operand length.
         if op_encoding == OpEn::I {
-            let extensions = extensions.expect("All Rules with an OpEn::I should require an extension");
+            let extensions = extensions.as_ref().expect("All Rules with an OpEn::I should require an extension");
 
             if extensions.len() == 1 {
                 let ext = extensions[0].clone();
@@ -205,7 +270,24 @@ impl DecodeRule {
             }
         }
 
+        if op_encoding == OpEn::D {
+            // Form is OpCode + Relative Displacement
+            let extensions = extensions.as_ref().expect("All Rules with an OpEn::I should require an extension");
+                let rel8  = extensions.contains(&Extension::Rel8)  && extensions.contains(&Extension::Rel8 );
+                let rel16 = extensions.contains(&Extension::Rel16) && extensions.contains(&Extension::Rel16);
+                //let rel32 = extensions.contains(&Extension::Rel32) && extensions.contains(&Extension::Rel32);
 
+            let bytes = if rel8 { 1 } else if rel16 { 2 } else { 4 }; 
+
+            return op_code.bytes().len() + bytes;
+        }
+        if op_encoding == OpEn::OI {
+            let extensions = extensions.as_ref().expect("All Rules with an OpEn::OI should require an extension");
+            let bytes = extensions.iter()
+                .filter(|ext| ext.operand_length().is_some())
+                .fold(0, |acc, ext| acc + ext.operand_length().expect("Should be some due to fiter") );
+            return op_code.bytes().len() + bytes;
+        }
 
         let mut len: usize = 0; 
         if self.1.is_some() { len += 1; }
@@ -218,17 +300,17 @@ impl DecodeRule {
         self.4.modrm_required()
     }
 
-    pub fn implicit_operand(&self) -> Option<&'static str> {
-        let (mnemonic, prefix, op_code, extensions, op_encoding, addr_modes) = self.separate();
+    pub fn implicit_operand(&self) -> Option<Register> {
+        let (_, _, op_code, extensions, op_encoding, _) = self.separate();
         if op_encoding == OpEn::I && extensions.is_some() {
             let extensions = extensions.expect("Should be Some by virtue of above conditional");
 
             match op_code.bytes()[0] {
                 // OpCodes where an operands implied by the OpCode
                 0x2D | 0x05 => {
-                    if extensions.contains(&Extension::IB) { return Some("al"); } else
-                    if extensions.contains(&Extension::IW) { return Some("ax"); } else
-                    if extensions.contains(&Extension::ID) { return Some("eax"); } 
+                    if extensions.contains(&Extension::IB) { return Some(Register::AL); } else
+                    if extensions.contains(&Extension::IW) { return Some(Register::AX); } else
+                    if extensions.contains(&Extension::ID) { return Some(Register::EAX); } 
                     else { return None; }
                 },
                 _ => None
@@ -237,7 +319,14 @@ impl DecodeRule {
         else { None }
     }
 
-    pub fn mnemonic(&self) -> String { self.0.to_string() }
+    pub fn makes_label(&self) -> bool {
+        match self.mnemonic() {
+            "call" => true,
+            _ => false,
+        }
+    }
+
+    pub fn mnemonic(&self) -> &'static str { self.0 }
     pub fn op_code(&self) -> OpCode { self.2.clone() }
     pub fn extensions(&self) -> Option<Vec<Extension>> { 
         match &self.3 {
@@ -256,7 +345,6 @@ impl DecodeRule {
     }
     pub fn op_encoding(&self) -> OpEn { self.4.clone() }
     pub fn address_modes(&self) -> Option<AddressingModes> { self.5.clone() }
-
 }
 impl Display for DecodeRule {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

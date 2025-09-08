@@ -1,7 +1,5 @@
 use phf::{phf_map, Map};
 
-use crate::instruction::encoding::ModRM;
-
 use super::{
     decode::{
         DecodeRule,
@@ -44,7 +42,6 @@ macro_rules! ins0 {
     };
 }
 
-
 macro_rules! ins1 {
     ($Mnemonic:literal, $OpCodes:expr, $extensions:expr, $OpEn:expr) => {
         DecodeRule($Mnemonic,
@@ -81,8 +78,10 @@ macro_rules! ins3 {
     };
 }
 
-pub struct DecodeRules(RulesMap);
+pub struct DecodeRules;
 impl DecodeRules {
+
+    #[allow(unused)]
     pub fn get(byte: &u8) -> Result<Rules, DecodeError> {
         match DECODE_RULES.get(&format!("0x{byte:02X}")) {
             Some(rules) => Ok(*rules),
@@ -90,6 +89,7 @@ impl DecodeRules {
         }
     }
 }
+
 #[test]
 fn access_internal_state() {
     let rules = DecodeRules::get(&0x01);
@@ -129,84 +129,87 @@ type RulesMap = Map<&'static str, Rules>;
 #[allow(unused)]
 static DECODE_RULES: RulesMap = phf_map! {
 //  Byte -->     Mnemonic       OpCode    Extensions      OpEncoding      Addressing Modes
-    "0x01" => &[ins3!("add",      [0x01],       ["/r"],      OpEn::MR, [0b00,0b01,0b10,0b11])],
-    "0x03" => &[ins3!("add",      [0x03],       ["/r"],      OpEn::RM, [0b00,0b01,0b10,0b11])],
-    "0x05" => &[ins1!("add",      [0x05],       ["id"],      OpEn::I                        )],
-    "0x09" => &[ins3!("or",       [0x09],       ["/r"],      OpEn::MR, [0b00,0b01,0b10,0b11])],
-    "0x0B" => &[ins3!("or",       [0x0B],       ["/r"],      OpEn::RM, [0b00,0b01,0b10,0b11])],
-    "0x0D" => &[ins1!("or",       [0x0D],       ["id"],      OpEn::I                        )],
-    "0x0F" => &[ins1!("jz",       [0x0F, 0x84], ["id"],      OpEn::D                        ),
-                ins1!("jnz",      [0x0F, 0x85], ["id"],      OpEn::D                        ),
-                ins3!("clflush",  [0x0F, 0xAE], ["/7"],      OpEn::M, [0b00,0b01,0b10,]     ), // ???
+    "0x01" => &[ins3!("add",      [0x01],       ["/r"],          OpEn::MR, [0b00,0b01,0b10,0b11])],
+    "0x03" => &[ins3!("add",      [0x03],       ["/r"],          OpEn::RM, [0b00,0b01,0b10,0b11])],
+    "0x05" => &[ins1!("add",      [0x05],       ["id"],          OpEn::I                        )],
+    "0x09" => &[ins3!("or",       [0x09],       ["/r"],          OpEn::MR, [0b00,0b01,0b10,0b11])],
+    "0x0B" => &[ins3!("or",       [0x0B],       ["/r"],          OpEn::RM, [0b00,0b01,0b10,0b11])],
+    "0x0D" => &[ins1!("or",       [0x0D],       ["id"],          OpEn::I                        )],
+    "0x0F" => &[ins1!("jz",       [0x0F, 0x84], ["cd", "rel32"], OpEn::D                        ),
+                ins1!("jnz",      [0x0F, 0x85], ["cd", "rel32"], OpEn::D                        ),
+                ins3!("clflush",  [0x0F, 0xAE], ["/7"],          OpEn::M, [0b00,0b01,0b10,]     ), // ???
     ],
-   "0x25" => &[ins1!("and",      [0x25],       ["id"],       OpEn::I                        )],
-   "0x21" => &[ins3!("and",      [0x21],       ["/r"],       OpEn::MR, [0b00,0b01,0b10,0b11])],
-   "0x23" => &[ins3!("and",      [0x23],       ["/r"],       OpEn::RM, [0b00,0b01,0b10,0b11])],
-   "0x29" => &[ins3!("sub",      [0x29],       ["/r"],       OpEn::MR, [0b00,0b01,0b10,0b11])],
-   "0x2B" => &[ins3!("sub",      [0x2B],       ["/r"],       OpEn::RM, [0b00,0b01,0b10,0b11])],
-   "0x2D" => &[ins1!("sub",      [0x2D],       ["id"],       OpEn::I                        )],
-   "0x31" => &[ins3!("xor",      [0x31],       ["/r"],       OpEn::MR, [0b00,0b01,0b10,0b11])],
-   "0x33" => &[ins3!("xor",      [0x33],       ["/r"],       OpEn::RM, [0b00,0b01,0b10,0b11])],
-   "0x35" => &[ins1!("xor",      [0x35],       ["id"],       OpEn::I                        )],
-   "0x39" => &[ins3!("cmp",      [0x39],       ["/r"],       OpEn::MR, [0b00,0b01,0b10,0b11])], 
-   "0x3B" => &[ins3!("cmp",      [0x3B],       ["/r"],       OpEn::RM, [0b00,0b01,0b10,0b11])], 
-   "0x3D" => &[ins1!("cmp",      [0x3D],       ["/id"],      OpEn::I                        )], 
+   "0x25" => &[ins1!("and",      [0x25],       ["id"],           OpEn::I                        )],
+   "0x21" => &[ins3!("and",      [0x21],       ["/r"],           OpEn::MR, [0b00,0b01,0b10,0b11])],
+   "0x23" => &[ins3!("and",      [0x23],       ["/r"],           OpEn::RM, [0b00,0b01,0b10,0b11])],
+   "0x29" => &[ins3!("sub",      [0x29],       ["/r"],           OpEn::MR, [0b00,0b01,0b10,0b11])],
+   "0x2B" => &[ins3!("sub",      [0x2B],       ["/r"],           OpEn::RM, [0b00,0b01,0b10,0b11])],
+   "0x2D" => &[ins1!("sub",      [0x2D],       ["id"],           OpEn::I                        )],
+   "0x31" => &[ins3!("xor",      [0x31],       ["/r"],           OpEn::MR, [0b00,0b01,0b10,0b11])],
+   "0x33" => &[ins3!("xor",      [0x33],       ["/r"],           OpEn::RM, [0b00,0b01,0b10,0b11])],
+   "0x35" => &[ins1!("xor",      [0x35],       ["id"],           OpEn::I                        )],
+   "0x39" => &[ins3!("cmp",      [0x39],       ["/r"],           OpEn::MR, [0b00,0b01,0b10,0b11])], 
+   "0x3B" => &[ins3!("cmp",      [0x3B],       ["/r"],           OpEn::RM, [0b00,0b01,0b10,0b11])], 
+   "0x3D" => &[ins1!("cmp",      [0x3D],       ["/id"],          OpEn::I                        )], 
 
    //EAX      ECX      EDX      EBX      ESP      EBP      ESI       EDI
    "0x40" | "0x41" | "0x42" | "0x43" | "0x44" | "0x45" | "0x46" | "0x47" => 
-             &[ins1!("inc",      [0x40],       ["+rd"],      OpEn::O                        )],
+             &[ins1!("inc",      [0x40],       ["+rd"],          OpEn::O                        )],
 
    "0x48" | "0x49" | "0x4A" | "0x4B" | "0x4C" | "0x4D" | "0x4E" | "0x4F" => 
-             &[ins1!("dec",      [0x48],       ["+rd"],      OpEn::O                        )], 
+             &[ins1!("dec",      [0x48],       ["+rd"],          OpEn::O                        )], 
 
    "0x50" | "0x51" | "0x52" | "0x53" | "0x54" | "0x55" | "0x56" | "0x57" => 
-             &[ins1!("push",     [0x50],       ["+rd"],      OpEn::O                        )],
+             &[ins1!("push",     [0x50],       ["+rd"],          OpEn::O                        )],
 
    "0x58" | "0x59" | "0x5A" | "0x5B" | "0x5C" | "0x5D" | "0x5E" | "0x5F" => 
-             &[ins1!("pop",      [0x58],       ["+rd"],      OpEn::O                        )],
+             &[ins1!("pop",      [0x58],       ["+rd"],          OpEn::O                        )],
 
-   "0x68" => &[ins1!("push",     [0x68],       ["id"],       OpEn::I                        )],
-   "0x6A" => &[ins1!("push",     [0x6A],       ["ib"],       OpEn::I                        )],
-   "0x74" => &[ins1!("jz",       [0x74],       ["ib"],       OpEn::D                        )],
-   "0x75" => &[ins1!("jnz",      [0x75],       ["ib"],       OpEn::D                        )],
-   "0x81" => &[ins3!("add",      [0x81],       ["/0", "id"], OpEn::MI, [0b00,0b01,0b10,0b11]),
-               ins3!("and",      [0x81],       ["/4", "id"], OpEn::MI, [0b00,0b01,0b10,0b11]),
-               ins3!("cmp",      [0x81],       ["/7", "id"], OpEn::MI, [0b00,0b01,0b10,0b11]),
-               ins3!("or",       [0x81],       ["/1", "id"], OpEn::MI, [0b00,0b01,0b10,0b11]),
-               ins3!("sub",      [0x81],       ["/5", "id"], OpEn::MI, [0b00,0b01,0b10,0b11]),
-               ins3!("xor",      [0x81],       ["/6"],       OpEn::MI, [0b00,0b01,0b10,0b11]),
+   "0x68" => &[ins1!("push",     [0x68], ["id"],                 OpEn::I                        )],
+   "0x6A" => &[ins1!("push",     [0x6A], ["ib"],                 OpEn::I                        )],
+   "0x74" => &[ins1!("jz",       [0x74], ["cb", "rel8"],         OpEn::D                        )],
+   "0x75" => &[ins1!("jnz",      [0x75], ["cb", "rel8"],         OpEn::D                        )],
+   "0x81" => &[ins3!("add",      [0x81], ["/0", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),
+               ins3!("and",      [0x81], ["/4", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),
+               ins3!("cmp",      [0x81], ["/7", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),
+               ins3!("or",       [0x81], ["/1", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),
+               ins3!("sub",      [0x81], ["/5", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),
+               ins3!("xor",      [0x81], ["/6"],                 OpEn::MI, [0b00,0b01,0b10,0b11]),
     ], 
-    "0x85" => &[ins3!("test",     [0x85],       ["/r"],       OpEn::MR, [0b00,0b01,0b10,0b11])],
-    "0x89" => &[ins3!("mov",      [0x89],       ["/r"],       OpEn::MR, [0b00,0b01,0b10,0b11])],
-    "0x8B" => &[ins3!("mov",      [0x8B],       ["/r"],       OpEn::RM, [0b00,0b01,0b10,0b11])],
-    "0x8D" => &[ins3!("lea",      [0x8D],       ["/r"],       OpEn::RM, [0b00,0b01,0b10]     )],
-    "0x8F" => &[ins3!("pop",      [0x8F],       ["/0"],       OpEn::M,  [0b00,0b01,0b10,0b11])],
-    "0x90" => &[ins0!("nop",      [0x90],                     OpEn::ZO                       )],
-    "0x99" => &[ins0!("cdq",      [0x99],                     OpEn::ZO                       )],
-    "0xA1" => &[ins0!("mov",      [0xA1],                     OpEn::FD                       )],
-    "0xA3" => &[ins0!("mov",      [0xA3],                     OpEn::TD                       )],
-    "0xA5" => &[ins0!("movsd",    [0xA5],                     OpEn::ZO                       )],
-    "0xA9" => &[ins1!("test",     [0xA9], ["id"],             OpEn::I                        )],
-    "0xB8" => &[ins1!("mov",      [0xB8], ["+rd", "id"],      OpEn::OI                       )],
-    "0xC2" => &[ins1!("retn",     [0xC2], ["iw"],             OpEn::I                        )],
-    "0xC3" => &[ins0!("retn",     [0xC3],                     OpEn::ZO                       )],
-    "0xC7" => &[ins3!("mov",      [0xC7], ["/0", "id"],       OpEn::MI, [0b00,0b01,0b10,0b11])],
-    "0xCA" => &[ins1!("retf",     [0xCA], ["iw"],             OpEn::I                        )],
-    "0xCB" => &[ins0!("retf",     [0xCB],                     OpEn::ZO                       )],
-    "0xCC" => &[ins0!("int3",     [0xCC],                     OpEn::ZO                       )],
-    "0xCD" => &[ins1!("int",      [0xCC], ["ib"],             OpEn::I                        )],
-    "0xE8" => &[ins1!("call",     [0xE8], ["id"],             OpEn::D                        )], 
-    "0xE9" => &[ins1!("jmp",      [0xE9], ["id"],             OpEn::D                        )],
-    "0xEB" => &[ins1!("jmp",      [0xEB], ["ib"],             OpEn::D                        )],
-    "0xF7" => &[ins3!("idiv",     [0xF7], ["/7"],             OpEn::M,  [0b00,0b01,0b10,0b11]), 
-                ins3!("not",      [0xF7], ["/2"],             OpEn::M,  [0b00,0b01,0b10,0b11]),
-                ins3!("test",     [0xF7], ["/0","id"],        OpEn::MI, [0b00,0b01,0b10,0b11]),
+    "0x85" => &[ins3!("test",    [0x85], ["/r"],                 OpEn::MR, [0b00,0b01,0b10,0b11])],
+    "0x89" => &[ins3!("mov",     [0x89], ["/r"],                 OpEn::MR, [0b00,0b01,0b10,0b11])],
+    "0x8B" => &[ins3!("mov",     [0x8B], ["/r"],                 OpEn::RM, [0b00,0b01,0b10,0b11])],
+    "0x8D" => &[ins3!("lea",     [0x8D], ["/r"],                 OpEn::RM, [0b00,0b01,0b10]     )],
+    "0x8F" => &[ins3!("pop",     [0x8F], ["/0"],                 OpEn::M,  [0b00,0b01,0b10,0b11])],
+    "0x90" => &[ins0!("nop",     [0x90],                         OpEn::ZO                       )],
+    "0x99" => &[ins0!("cdq",     [0x99],                         OpEn::ZO                       )],
+    "0xA1" => &[ins0!("mov",     [0xA1],                         OpEn::FD                       )],
+    "0xA3" => &[ins0!("mov",     [0xA3],                         OpEn::TD                       )],
+    "0xA5" => &[ins0!("movsd",   [0xA5],                         OpEn::ZO                       )],
+    "0xA9" => &[ins1!("test",    [0xA9], ["id"],                 OpEn::I                        )],
+
+    "0xB8" | "0xB9" | "0xBA" | "0xBB" | "0xBC" | "0xBD" | "0xBE" | "0xBF" => 
+              &[ins1!("mov",     [0xB8], ["+rd", "id"],          OpEn::OI                       )],
+
+    "0xC2" => &[ins1!("retn",    [0xC2], ["iw"],                 OpEn::I                        )],
+    "0xC3" => &[ins0!("retn",    [0xC3],                         OpEn::ZO                       )],
+    "0xC7" => &[ins3!("mov",     [0xC7], ["/0", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11])],
+    "0xCA" => &[ins1!("retf",    [0xCA], ["iw"],                 OpEn::I                        )],
+    "0xCB" => &[ins0!("retf",    [0xCB],                         OpEn::ZO                       )],
+    "0xCC" => &[ins0!("int3",    [0xCC],                         OpEn::ZO                       )],
+    "0xCD" => &[ins1!("int",     [0xCC], ["ib"],                 OpEn::I                        )],
+    "0xE8" => &[ins1!("call",    [0xE8], ["id"],                 OpEn::D                        )], 
+    "0xE9" => &[ins1!("jmp",     [0xE9], ["id"],                 OpEn::D                        )],
+    "0xEB" => &[ins1!("jmp",     [0xEB], ["ib"],                 OpEn::D                        )],
+    "0xF7" => &[ins3!("idiv",    [0xF7], ["/7"],                 OpEn::M,  [0b00,0b01,0b10,0b11]), 
+                ins3!("not",     [0xF7], ["/2"],                 OpEn::M,  [0b00,0b01,0b10,0b11]),
+                ins3!("test",    [0xF7], ["/0","id"],            OpEn::MI, [0b00,0b01,0b10,0b11]),
     ],
-    "0xFF" => &[ins3!("call",     [0xFF], ["/2"],             OpEn::M,  [0b00,0b01,0b10,0b11]),
-                ins3!("dec",      [0xFF], ["/1"],             OpEn::M,  [0b00,0b01,0b10,0b11]), 
-                ins3!("inc",      [0xFF], ["/0"],             OpEn::M,  [0b00,0b01,0b10,0b11]), 
-                ins3!("jmp",      [0xFF], ["/4"],             OpEn::M,  [0b00,0b01,0b10,0b11]),
-                ins3!("push",     [0xFF], ["/6"],             OpEn::M,  [0b00,0b01,0b10,0b11]),
+    "0xFF" => &[ins3!("call",    [0xFF], ["/2"],                 OpEn::M,  [0b00,0b01,0b10,0b11]),
+                ins3!("dec",     [0xFF], ["/1"],                 OpEn::M,  [0b00,0b01,0b10,0b11]), 
+                ins3!("inc",     [0xFF], ["/0"],                 OpEn::M,  [0b00,0b01,0b10,0b11]), 
+                ins3!("jmp",     [0xFF], ["/4"],                 OpEn::M,  [0b00,0b01,0b10,0b11]),
+                ins3!("push",    [0xFF], ["/6"],                 OpEn::M,  [0b00,0b01,0b10,0b11]),
     ],
     // This guy breaks the table formatting even more and she's unique, it'll be fine down here
     "0xF2" => &[ins2!("repne cmpsd", 0xF2, [0xA7],            OpEn::ZO                       )],

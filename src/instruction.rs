@@ -1,8 +1,107 @@
+use std::fmt::Display;
+
 use crate::decode::DecodeError;
-use encoding::{
-    Displacement, Immediate,
+use encoding::operands::{
+    Displacement, Immediate, Offset, Operand, Register
 };
-use memory::{Register, Memory};
+use memory::Memory;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Instruction {
+    prefix: Option<String>,
+    mnemonic: &'static str,
+    operands: Vec<Operand>,
+} 
+impl Instruction {
+    pub fn new(mnemonic: &'static str) -> Instruction {
+        let mut i = Instruction::default();
+        i.mnemonic = mnemonic;
+        i
+    }
+    pub fn add(&mut self, op: Operand) -> &mut Self {
+        self.operands.push(op);
+        self
+    }
+
+    pub fn _update_prefix(&mut self, prefix: String) -> &mut Self {
+        self.prefix = Some(prefix);
+        self
+    }
+
+    /// Returns the offset of the instruction's reference.
+    ///
+    /// This function is for those instruction that reference (i.e.call or jump)
+    /// to other locations/addresses that necessitate creating a label. 
+    ///
+    /// Specifically, this is only for instructions with the OpEn::D encoding.
+    /// These will have only one operand.
+    pub fn get_displacement_offset(&self) -> Option<Offset> {
+        let offsets: Vec<Offset> = self.operands
+            .iter()
+            .filter(|o| { matches!(o, Operand::Displacement(_)) })
+            .map(|o: &Operand| {
+                let disp = match o {
+                    Operand::Displacement(displacement) => displacement,
+                    _ => panic!("Should be unreachable due to the filter")
+                };
+                let offset: Offset = disp.clone().into();
+                offset 
+            })
+        .collect();
+        if offsets.len() == 1 {
+            Some(offsets[0].clone())
+        } else { None }
+    }
+
+    fn convert_displacements_to_offsets(&self) -> bool {
+        match self.mnemonic {
+            "call" | "jmp" | "jz" | "jnz" | "jne" => true,
+            _ => false,
+        }
+    }
+}
+impl Default for Instruction {
+    fn default() -> Self {
+        Instruction {
+            prefix: None,
+            mnemonic: "",
+            operands: Vec::new(),
+        }
+    }
+
+}
+impl Display for Instruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let prefix = &self.prefix;
+        let operands = &self.operands;
+
+        let mut out = if prefix.is_some() {
+            format!("{} ", self.prefix.clone()
+                .expect("should be Some by virtue of the conditional"))
+        } else { String::new() };
+        out = format!("{out}{}", self.mnemonic);
+        out = if !operands.is_empty() {
+            let operands = operands
+                .iter()
+                .map(|o| {
+                    if matches!(o, Operand::Displacement(_)) {
+                        let o: Offset = o.displacement()
+                            .expect("Should be Displacement due to the match statement")
+                            .into();
+                        o.to_string()
+                    } else {
+                        o.to_string()
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join(", ");
+            format!("{out} {operands}")
+        }
+        else { out };
+        
+        write!(f, "{out}")
+    }
+}
 
 
 /// Possible Operand Encodings that are used to construct the
@@ -27,18 +126,18 @@ impl OpEn {
 
     pub fn operand_count(&self) -> usize {
         match self {
-            OpEn::RM => todo!(),
-            OpEn::MR => todo!(),
-            OpEn::MI => todo!(),
-            OpEn::M => todo!(),
+            OpEn::RM => unimplemented!("Not yet implemented"),
+            OpEn::MR => unimplemented!("Not yet implemented"),
+            OpEn::MI => unimplemented!("Not yet implemented"),
+            OpEn::M  => unimplemented!("Not yet implemented"),
             OpEn::I => 1,
-            OpEn::NP => todo!(),
+            OpEn::NP => unimplemented!("Not part of the assignment"),
             OpEn::ZO => 0,
             OpEn::O  => 0,
-            OpEn::OI => todo!(),
-            OpEn::D => todo!(),
-            OpEn::FD => todo!(),
-            OpEn::TD => todo!(),
+            OpEn::OI => 2,
+            OpEn::D =>  1 ,
+            OpEn::FD => unimplemented!("Not part of the assignment"),
+            OpEn::TD => unimplemented!("Not part of the assignment"),
         }
 
     }
@@ -87,57 +186,13 @@ enum OperandEncoding {
 }
 
 pub mod memory {
-    use std::fmt::Display;
-
-    use super::*;
-
-    #[allow(unused)]
-    #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-    pub enum Register {
-        EAX = 0, ECX = 1, EDX = 2, EBX = 3,
-        ESP = 4, EBP = 5, ESI = 6, EDI = 7,
-    } 
-    impl TryFrom<u8> for Register {
-        type Error = DecodeError;
-
-        fn try_from(value: u8) -> Result<Self, Self::Error> {
-            match value {
-                0 => Ok(Register::EAX),
-                1 => Ok(Register::ECX),
-                2 => Ok(Register::EDX),
-                3 => Ok(Register::EBX),
-                4 => Ok(Register::ESP),
-                5 => Ok(Register::EBP),
-                6 => Ok(Register::ESI),
-                7 => Ok(Register::EDI),
-                _ => Err(DecodeError::InvalidRegister),
-            }
-        }
-    }
-    impl Display for Register {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let reg = match self {
-                Register::EAX => "eax",
-                Register::ECX => "ecx",
-                Register::EDX => "edx",
-                Register::EBX => "ebx",
-                Register::ESP => "esp",
-                Register::EBP => "ebp",
-                Register::ESI => "esi",
-                Register::EDI => "edi",
-            };
-            write!(f, "{reg}")
-        }
-    }
-
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct Memory {}
 }
 
 pub mod encoding {
-    use std::fmt::Display;
-
     use super::*;
+
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct Prefix(pub u8);
@@ -148,56 +203,6 @@ pub mod encoding {
         pub fn len(&self) -> usize { self.0.len() }
         pub fn bytes(&self) -> Vec<u8> { self.0.to_vec() }
     }
-
-    pub mod extensions {
-        use super::*;
-
-        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-        pub struct ExtSet(pub &'static [&'static str]);
-
-        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-        pub enum Extension {
-            RW, RD,
-            IB, IW, ID,
-            SR,
-            S0, S1, S2, S3, S4, S5, S6, S7
-
-        }
-        impl Extension {
-            pub fn operand_length(&self) -> Option<usize> {
-                match self {
-                    Extension::IB => Some(1),
-                    Extension::IW => Some(2),
-                    Extension::ID => Some(4),
-                    _ => None, // Do the others encode operand length?
-                }
-            }
-        }
-        impl TryFrom<&'static str> for Extension {
-            type Error = DecodeError;
-
-            fn try_from(value: &'static str) -> Result<Self, Self::Error> {
-                match value {
-                    "+rw" => Ok(Extension::RW),
-                    "+rd" => Ok(Extension::RD),
-                    "ib"  => Ok(Extension::IB),
-                    "iw"  => Ok(Extension::IW),
-                    "id"  => Ok(Extension::ID),
-                    "/r"  => Ok(Extension::SR),
-                    "/0"  => Ok(Extension::S0),
-                    "/1"  => Ok(Extension::S1),
-                    "/2"  => Ok(Extension::S2),
-                    "/3"  => Ok(Extension::S3),
-                    "/4"  => Ok(Extension::S4),
-                    "/5"  => Ok(Extension::S5),
-                    "/6"  => Ok(Extension::S6),
-                    "/7"  => Ok(Extension::S7),
-                    _ => Err(DecodeError::InvalidOpCodeExtension)
-                }
-            }
-        }
-    }
-
 
     #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
     pub struct AddressingModes(pub &'static [u8]);
@@ -304,58 +309,366 @@ pub mod encoding {
         }
     }
 
-    #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-    pub struct Displacement(u32);
-    impl Displacement {
-        /// The number of bytes contained in the Displacement
-        /// as seen on disk or in a file
-        pub fn _len(&self) -> usize {
-            unimplemented!("TODO")
+    pub mod operands {
+        use super::*;
+
+        #[allow(unused)]
+        #[derive(Clone, Debug, PartialEq)]
+        pub enum Operand {
+            Register(Register),
+            Immediate(Immediate),
+            Displacement(Displacement),
+            Label(Offset),
         }
-    }
-
-    #[allow(unused)]
-    #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-    pub enum Immediate {
-        Imm8(Vec<u8>),
-        Imm16(Vec<u8>),
-        Imm32(Vec<u8>),
-        Imm64(Vec<u8>),
-    } 
-    impl Immediate {
-        pub fn raw_bytes(&self) -> Vec<u8> {
-            let bytes = match self {
-                Immediate::Imm8(vec) =>  vec,
-                Immediate::Imm16(vec) => vec,
-                Immediate::Imm32(vec) => vec,
-                Immediate::Imm64(vec) => vec,
-            };
-            bytes.clone()
+        impl Operand {
+            pub fn displacement(&self) -> Option<Displacement> {
+                match self {
+                    Operand::Displacement(displacement) => Some(displacement.clone()),
+                    _ => None,
+                }
+            }
         }
-    }
-    impl TryFrom<&[u8]> for Immediate {
-        type Error = DecodeError;
+        impl Display for Operand {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let out = match self {
+                    Operand::Register(register) => register.to_string(),
+                    Operand::Immediate(immediate) => immediate.to_string(),
+                    Operand::Displacement(displacement) => displacement.to_string(),
+                    Operand::Label(offset) => offset.to_string(),
+                };
+                write!(f, "{out}")
+            }
+        }
 
-        fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-            match value.len() {
-                1 => Ok(Immediate::Imm8(value.to_vec())),
-                2 => Ok(Immediate::Imm16(value.to_vec())),
-                4 => Ok(Immediate::Imm32(value.to_vec())),
-                8 => Ok(Immediate::Imm64(value.to_vec())),
-                _ => Err(DecodeError::InvalidImmediateSize(value.len()))
+        #[derive(Clone, Debug, PartialEq, Default)]
+        pub struct Offset(pub u32);
+        #[allow(unused)]
+        impl Offset {
+            pub fn increment(&mut self, bytes: u32) { self.0 += bytes; }
+        }
+        impl From<Displacement> for Offset {
+            fn from(value: Displacement) -> Self {
+                let offset = value.get_inner();
+                Offset(offset)
+            }
+        }
+        impl Display for Offset {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "offset_{:08X}h", self.0)
+            }
+        }
 
+        #[allow(unused)]
+        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+        pub enum Register {
+            // Defined by MODRM byte
+            EAX = 0, ECX = 1, EDX = 2, EBX = 3,
+            ESP = 4, EBP = 5, ESI = 6, EDI = 7,
+
+            // Implied by instruction extension
+            AH, AL, AX, RAX,
+            BH, BL, BX, RBX,
+            CH, CL, CX, RCX,
+            DH, DL, DX, RDX,
+        } 
+        impl TryFrom<u8> for Register {
+            type Error = DecodeError;
+
+            fn try_from(value: u8) -> Result<Self, Self::Error> {
+                match value {
+                    0 => Ok(Register::EAX),
+                    1 => Ok(Register::ECX),
+                    2 => Ok(Register::EDX),
+                    3 => Ok(Register::EBX),
+                    4 => Ok(Register::ESP),
+                    5 => Ok(Register::EBP),
+                    6 => Ok(Register::ESI),
+                    7 => Ok(Register::EDI),
+                    _ => Err(DecodeError::InvalidRegister),
+                }
+            }
+        }
+        impl Display for Register {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let reg = match self {
+                    Register::AL  => "al",
+                    Register::AH  => "ah",
+                    Register::AX  => "ax",
+                    Register::EAX => "eax",
+                    Register::RAX => "rax",
+
+                    Register::BL  => "bl",
+                    Register::BH  => "bh",
+                    Register::BX  => "bx",
+                    Register::EBX => "ebx",
+                    Register::RBX => "rbx",
+
+                    Register::CL  => "cl",
+                    Register::CH  => "ch",
+                    Register::CX  => "cx",
+                    Register::ECX => "ecx",
+                    Register::RCX => "rcx",
+
+                    Register::DL  => "dl",
+                    Register::DH  => "dh",
+                    Register::DX  => "dx",
+                    Register::EDX => "edx",
+                    Register::RDX => "rdx",
+
+                    Register::ESP => "esp",
+                    Register::EBP => "ebp",
+                    Register::ESI => "esi",
+                    Register::EDI => "edi",
+                };
+                write!(f, "{reg}")
+            }
+        }
+
+        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+        pub enum Displacement {
+            Rel8(u32),
+            Rel16(u32),
+            Rel32(u32)
+        }
+        impl Displacement {
+            /// The number of bytes contained in the Displacement
+            /// as seen on disk or in a file
+            pub fn len(&self) -> usize {
+                match self {
+                    Displacement::Rel8(_) => 1,
+                    Displacement::Rel16(_) => 2,
+                    Displacement::Rel32(_) => 3,
+                }
+            }
+
+            pub fn get_inner(&self) -> u32 {
+                match self {
+                    Displacement::Rel8(d)  => *d,
+                    Displacement::Rel16(d) => *d,
+                    Displacement::Rel32(d) => *d,
+                }
+            }
+
+            pub fn from_byte(address: Offset, opcode_length: usize, operand: &[u8;1]) -> Displacement {
+                let base = address.0 + opcode_length as u32 + operand.len() as u32;
+
+                let displacement = byte_to_double_with_sign_extend(*operand);
+                let displacement = u32::from_be_bytes(displacement);
+                println!("Target = {displacement} + {base}");
+                let target = displacement + base;
+                println!("Target: 0x{target:X}");
+                Displacement::Rel8(target)
+            }
+            pub fn from_word(address: Offset, opcode_length: usize, operand: &[u8;2]) -> Displacement {
+                let base = address.0 + opcode_length as u32 + operand.len() as u32;
+
+                let displacement = word_to_double_with_sign_extend(*operand);
+                let displacement = u32::from_be_bytes(displacement);
+                let target = displacement + base;
+                Displacement::Rel16(target)
+            }
+
+            pub fn from_double(address: Offset, opcode_length: usize, operand: &[u8;4]) -> Displacement {
+                let base = address.0 + opcode_length as u32 + operand.len() as u32;
+
+                let displacement = u32::from_le_bytes(*operand);
+                println!("displacement: {displacement:X}");
+                let target = displacement + base;
+                Displacement::Rel32(target)
+            }
+        }
+        impl Display for Displacement {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let disp = self.get_inner();
+                write!(f, "{disp:X}")
+            }
+        }
+
+        #[allow(unused)]
+        fn byte_to_double_with_sign_extend(bytes: [u8;1]) -> [u8;4] {
+            if bytes[0].leading_zeros() == 0 {
+                [0xFF, 0xFF, 0xFF, bytes[0]]
+            } else {
+                [0x00, 0x00, 0x00, bytes[0]]
+            }
+        }
+
+
+        #[allow(unused)]
+        fn word_to_double_with_sign_extend(bytes: [u8;2]) -> [u8;4] {
+            if bytes[0].leading_zeros() == 0 {
+                [0xFF, 0xFF, bytes[0], bytes[1]]
+            } else {
+                [0x00, 0x00, bytes[0], bytes[1]]
+            }
+        }
+
+        #[test]
+        fn rel8_calculation() {
+            let expected_a = 0x80;
+
+            let address = Offset(0x10);
+            let opcode_length = 1;
+            let operand: &[u8] = &[0x6E];
+            let base = address.0 + opcode_length + operand.len() as u32;
+            println!("{base:x}");
+
+            let displacement = <[u8;1]>::try_from(operand).unwrap();
+            let displacement = byte_to_double_with_sign_extend(displacement);
+            let displacement = u32::from_be_bytes(displacement);
+            println!("{displacement:x}");
+            let target = displacement + base;
+            println!("{target:x} ?= {expected_a:x}");
+            assert_eq!(target, expected_a);
+        }
+
+        #[test]
+        fn rel32_calculation() {
+            let expected_a = 0xAABBCCDD;
+
+            let address = Offset(0x1000);
+            let opcode_length = 1;
+            let operand: &[u8] = &[0xAA, 0xBB, 0xBC, 0xD8];
+            let base = address.0 + opcode_length + operand.len() as u32;
+            println!("{base:x}");
+
+            let displacement = <[u8;4]>::try_from(operand).unwrap();
+            let displacement = u32::from_be_bytes(displacement);
+            println!("{displacement:x}");
+            let target = displacement + base;
+            println!("{target:x} ?= {expected_a:x}");
+            assert_eq!(target, expected_a);
+        }
+
+        #[test]
+        fn displacement_negative_numbers() {
+            let expected_a: u32 = 0xFFFFFFFC;
+            let expected_b: u32 = 0x0000000C;
+            let expected_c: u32 = 0x000000FC;
+            let expected_d: u32 = 0xFFFFAFFC;
+
+            let original: u8 = 0xFC;
+            assert_eq!(byte_to_double_with_sign_extend([original]), expected_a.to_be_bytes());
+
+            let original: u8 = 0x0C;
+            assert_eq!(byte_to_double_with_sign_extend([original]), expected_b.to_be_bytes());
+
+            let original: [u8;2] = [0xFF, 0xFC];
+            assert_eq!(word_to_double_with_sign_extend(original), expected_a.to_be_bytes());
+
+            let original: [u8;2] = [0x00, 0x0C];
+            assert_eq!(word_to_double_with_sign_extend(original), expected_b.to_be_bytes());
+
+            let original: [u8;2] = [0x00, 0xFC];
+            assert_eq!(word_to_double_with_sign_extend(original), expected_c.to_be_bytes());
+
+            let original: [u8;2] = [0xAF, 0xFC];
+            assert_eq!(word_to_double_with_sign_extend(original), expected_d.to_be_bytes());
+
+        }
+
+        #[allow(unused)]
+        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+        pub enum Immediate {
+            Imm8(Vec<u8>),
+            Imm16(Vec<u8>),
+            Imm32(Vec<u8>),
+            Imm64(Vec<u8>),
+        } 
+        impl Immediate {
+            pub fn raw_bytes(&self) -> Vec<u8> {
+                let bytes = match self {
+                    Immediate::Imm8(vec) =>  vec,
+                    Immediate::Imm16(vec) => vec,
+                    Immediate::Imm32(vec) => vec,
+                    Immediate::Imm64(vec) => vec,
+                };
+                bytes.clone()
+            }
+        }
+        impl TryFrom<&[u8]> for Immediate {
+            type Error = DecodeError;
+
+            fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+                match value.len() {
+                    1 => Ok(Immediate::Imm8(value.to_vec())),
+                    2 => Ok(Immediate::Imm16(value.to_vec())),
+                    4 => Ok(Immediate::Imm32(value.to_vec())),
+                    8 => Ok(Immediate::Imm64(value.to_vec())),
+                    _ => Err(DecodeError::InvalidImmediateSize(value.len()))
+
+                }
+            }
+        }
+        impl Display for Immediate {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let bytes = self.raw_bytes()
+                    .iter()
+                    .rev()
+                    .map(|b| format!("{b:02X}"))
+                    .collect::<Vec<String>>()
+                    .join("");
+                write!(f, "0x{bytes}")
             }
         }
     }
-    impl Display for Immediate {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let bytes = self.raw_bytes()
-                .iter()
-                .rev()
-                .map(|b| format!("{b:02X}"))
-                .collect::<Vec<String>>()
-                .join("");
-            write!(f, "0x{bytes}")
+
+    pub mod extensions {
+        use super::*;
+
+        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+        pub struct ExtSet(pub &'static [&'static str]);
+
+        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+        pub enum Extension {
+            RW, RD,
+            IB, IW, ID,
+            CB, CW, CD,
+            SR,
+            S0, S1, S2, S3, S4, S5, S6, S7,
+            Rel8, Rel16, Rel32,
+
+        }
+        impl Extension {
+            pub fn operand_length(&self) -> Option<usize> {
+                match self {
+                    Extension::IB => Some(1),
+                    Extension::IW => Some(2),
+                    Extension::ID => Some(4),
+                    Extension::RD => Some(0),
+                    Extension::RW => Some(0),
+                    _ => None, // Do the others encode operand length?
+                }
+            }
+        }
+        impl TryFrom<&'static str> for Extension {
+            type Error = DecodeError;
+
+            fn try_from(value: &'static str) -> Result<Self, Self::Error> {
+                match value {
+                    "+rw"   => Ok(Extension::RW),
+                    "+rd"   => Ok(Extension::RD),
+                    "ib"    => Ok(Extension::IB),
+                    "iw"    => Ok(Extension::IW),
+                    "id"    => Ok(Extension::ID),
+                    "cb"    => Ok(Extension::CB),
+                    "cw"    => Ok(Extension::CW),
+                    "cd"    => Ok(Extension::CD),
+                    "/r"    => Ok(Extension::SR),
+                    "/0"    => Ok(Extension::S0),
+                    "/1"    => Ok(Extension::S1),
+                    "/2"    => Ok(Extension::S2),
+                    "/3"    => Ok(Extension::S3),
+                    "/4"    => Ok(Extension::S4),
+                    "/5"    => Ok(Extension::S5),
+                    "/6"    => Ok(Extension::S6),
+                    "/7"    => Ok(Extension::S7),
+                    "rel8"  => Ok(Extension::Rel8),
+                    "rel16" => Ok(Extension::Rel16),
+                    "rel32" => Ok(Extension::Rel32),
+                    _ => Err(DecodeError::InvalidOpCodeExtension)
+                }
+            }
         }
     }
 }
