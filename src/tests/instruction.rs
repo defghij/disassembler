@@ -20,14 +20,32 @@ pub mod compendium {
             .expect("Should be a defined opcode mapping");
 
         for rule in rules { // We dont know which rule will decode into an instruction
-            
-            let length = rule.len();
-            println!("rule reported byte length: {length}");
 
-            let prospective_bytes = bytes.get(0..length)
-                .expect("Test should have enough bytes for decoding instruction");
+            let requires_modrm = rule.modrm_required();
+            println!("rule reported modrm required: {requires_modrm}");
 
-            let instruction = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
+            let instruction = if requires_modrm { // We must decode bytes beyond the first to determine length
+
+                let modrm = rule.modrm_byte(bytes[1]);
+                if modrm.is_some() {
+                    println!("ModRM byte is valid");
+                    let _modrm = modrm.expect("Should be Some due to conditional");
+
+                    unimplemented!("ModRM Byte instructions not implemented yet");
+                } else {
+                    Bytes::Uknown(bytes[0])
+                }
+            } 
+            else { // We can know the length of the instruction _a priori_
+                let length = rule.len();
+                println!("rule reported byte length: {length}");
+
+                let prospective_bytes = bytes.get(0..length)
+                    .expect("Test should have enough bytes for decoding instruction");
+
+                Bytes::from(offset.clone(), prospective_bytes, rule.clone())
+            };
+
             println!("Attempted Instruction\n:{instruction:?}");
 
             if instruction.decoded_successfully() {
@@ -116,38 +134,42 @@ pub mod compendium {
             .for_each(|(s,b)| { check(s.to_string(),b); });
     }
 
+    #[test]
+    fn m_rm() {
+        let mapping: Vec<(&str, &[u8])> = vec![
+            ("00000000: FF F1     push ecx", 
+             &[0xFF, 0xF1]),
+             
+            ("00000000: FF 35 DD CC BB AA     push [ 0xAABBCCDD ]", 
+             &[0xFF, 0x35, 0xDD, 0xCC, 0xBB, 0xAA]),
+
+            ("00000000: FF 0B     dec [ ebx ]", 
+             &[0xFF, 0x0B]),
+
+            ("00000000: FF 40 30     inc [ eax + 0x30 ]", 
+             &[0xFF, 0x40, 0x30]),
+
+            ("00000000: FF 40 30    inc [ eax + 0x30 ]", 
+             &[0xFF, 0x40, 0x30]),
+
+            ("00000000: FF B6 DD CC BB AA     push [ esi + 0xAABBCCDD ]", 
+             &[0xFF, 0xB6, 0xDD, 0xCC, 0xBB, 0xAA]),
+
+            ("00000000: FF84 03 DD CC BB AA     inc [ eax + ebx + 0xAABBCCDD ]", 
+             &[0xFF, 0x84, 0x03, 0xDD, 0xCC, 0xBB, 0xAA]),
+
+            ("00000000: FF 34 35 DD CC BB AA     push [ esi + 0xAABBCCDD ]", 
+             &[0xFF, 0x34, 0x35, 0xDD, 0xCC, 0xBB, 0xAA]),
+
+            ("00000000: FF 14 24     call [ esp ]", 
+             &[0xFF, 0x14, 0x24                        ]),
+        ];
+        mapping.iter()
+            .for_each(|(s,b)| { check(s.to_string(),b); });
+    }
+
     //#[test]
-    //fn m_rm() {
-        //let mapping: Vec<(&str, &[u8])> = vec![
-            //("push ecx",
-             //&[0xFF, 0xF1]),
-
-            //("push [ 0xAABBCCDD ]",
-             //&[0xFF, 0x35, 0xDD, 0xCC, 0xBB, 0xAA]),
-
-            //("dec [ ebx ]",
-             //&[0xFF, 0x0B]),
-
-            //("inc [ eax + 0x30 ]",
-             //&[0xFF, 0x40, 0x30]),
-
-            //("push [ esi + 0xAABBCCDD ]",
-             //&[0xFF, 0xB6, 0xDD, 0xCC, 0xBB, 0xAA]),
-
-            //("inc [ eax + ebx + 0xAABBCCDD ]",
-             //&[0xFF, 0x84, 0x03, 0xDD, 0xCC, 0xBB, 0xAA]),
-
-            //("push [ esi + 0xAABBCCDD ]",
-             //&[0xFF, 0x34, 0x35, 0xDD, 0xCC, 0xBB, 0xAA]),
-
-            //("call [ esp ]",
-             //&[0xFF, 0x14, 0x24                        ]),
-        //];
-        //check_instructions(mapping);
-    //}
-
-    //#[test]
-    //fn m1_rm_and_one() {
+    //fn m1_rm_and_one() {                                                     8
         //let mapping: Vec<(&str, &[u8])> = vec![
             //("sar [ ebx + 0x10 ], 1",
              //&[0xD1, 0x7B, 0x10]),

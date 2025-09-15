@@ -132,13 +132,13 @@ impl OpEn {
             OpEn::RM => unimplemented!("Not yet implemented"),
             OpEn::MR => unimplemented!("Not yet implemented"),
             OpEn::MI => unimplemented!("Not yet implemented"),
-            OpEn::M  => unimplemented!("Not yet implemented"),
-            OpEn::I => 1,
+            OpEn::M  => 1,
+            OpEn::I  => 1,
             OpEn::NP => unimplemented!("Not part of the assignment"),
             OpEn::ZO => 0,
             OpEn::O  => 0,
             OpEn::OI => 2,
-            OpEn::D =>  1 ,
+            OpEn::D  => 1 ,
             OpEn::FD => unimplemented!("Not part of the assignment"),
             OpEn::TD => unimplemented!("Not part of the assignment"),
         }
@@ -224,7 +224,13 @@ pub mod encoding {
         pub u8
     ); 
     impl ModRM {
-        pub const fn _len() -> usize { 1 }
+        pub const fn _len() -> usize { 
+
+            1 
+        }
+
+        /// Returns the different parts of the ModRM bytes: (MOD, REG, RM)
+        pub fn split(&self) -> (u8,u8,u8) { (self.0, self.1, self.2) }
 
         #[allow(unused)]
         fn syntax(&self) -> Result<String,DecodeError>  {
@@ -463,6 +469,7 @@ pub mod encoding {
                 println!("Target: 0x{target:X}");
                 Displacement::Rel8(target)
             }
+
             pub fn from_word(address: Offset, opcode_length: usize, operand: &[u8;2]) -> Displacement {
                 let base = address.0 + opcode_length as u32 + operand.len() as u32;
 
@@ -496,7 +503,6 @@ pub mod encoding {
                 [0x00, 0x00, 0x00, bytes[0]]
             }
         }
-
 
         #[allow(unused)]
         fn word_to_double_with_sign_extend(bytes: [u8;2]) -> [u8;4] {

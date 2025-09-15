@@ -199,7 +199,6 @@ impl Bytes {
                             .expect("Opcde and Byte should be within the register range");
 
                         instruction.add(Operand::Register(register));
-
                     }
 
                     if extensions.contains(&Extension::IB) { 
@@ -302,7 +301,9 @@ impl DecodeRule {
             OpEn::RM => unimplemented!("`len not implemented for this Operand Encoding"),
             OpEn::MR => unimplemented!("`len not implemented for this Operand Encoding"),
             OpEn::MI => unimplemented!("`len not implemented for this Operand Encoding"),
-            OpEn::M => unimplemented!("`len not implemented for this Operand Encoding"),
+            OpEn::M => {
+                unimplemented!("`len not implemented for this Operand Encoding")
+            },
             OpEn::NP => unimplemented!("`len not implemented for this Operand Encoding"),
             OpEn::ZO => unimplemented!("`len not implemented for this Operand Encoding"),
             OpEn::ZO => unimplemented!("`len not implemented for this Operand Encoding"),
@@ -320,6 +321,30 @@ impl DecodeRule {
 
     pub fn modrm_required(&self) -> bool {
         self.4.modrm_required()
+    }
+
+    pub fn modrm_byte(&self, byte: u8) -> Option<ModRM> {
+        let ext_set = self.3.clone();
+        let addr_mode = self.5.clone(); 
+
+        if ext_set.is_some() & addr_mode.is_some() {
+            let extensions = ext_set.expect("Should be some due to conditional");
+            let addressing_mode = addr_mode.expect("Should be some due to conditional");
+
+            let modrm = ModRM::from(byte); 
+
+            let (md, rg, rm) = modrm.split();
+            if !addressing_mode.0.contains(&md) {
+                None
+            } else {
+                // Determine if the register bits yield a valid register.
+                // If so we know its a valid ModRM byte.
+                let reg = Register::try_from(rg);
+                if reg.is_err() { return None }
+                else { Some(modrm) }
+            }
+        } 
+        else { None }
     }
 
     pub fn implicit_operand(&self) -> Option<Register> {
