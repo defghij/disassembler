@@ -127,26 +127,24 @@ impl Bytes {
                 let extensions = extensions.unwrap();
                 if extensions.len() != 1 { return Bytes::Uknown(bytes[0]); }
 
-                let immediate = match extensions[0] {
-                    Extension::ID => {
-                        if bytes.len() == 5 { Immediate::Imm32(bytes[1..5].to_vec()) }
-                        else { return Bytes::Uknown(bytes[0]); }
-                    },
-                    Extension::IW => {
-                        unimplemented!("Opcode Extension for immediate word is not implemented")
-                    },
-                    Extension::IB => {
-                        if bytes.len() == 2 { Immediate::Imm8(bytes[1..2].to_vec()) }
-                        else { return Bytes::Uknown(bytes[0]); }
-                    },
-                    _ => return Bytes::Uknown(bytes[0])
-                };
-
                 if rule.implicit_operand().is_some() {
                     let register = rule.implicit_operand().unwrap();
                     instruction.add(Operand::Register(register));
                 }
-                instruction.add(Operand::Immediate(immediate));
+
+                if extensions.contains(&Extension::IB) { 
+                    let imm = Immediate::Imm8(bytes[1..2].to_vec());
+                    instruction.add(Operand::Immediate(imm));
+                }
+
+                if extensions.contains(&Extension::IW) { 
+                    unimplemented!("Opcode Extension for immediate word is not implemented")
+                }
+
+                if extensions.contains(&Extension::ID) { 
+                    let imm = Immediate::Imm32(bytes[1..5].to_vec());
+                    instruction.add(Operand::Immediate(imm));
+                }
 
                 Bytes::Decoded {
                     bytes: bytes.to_vec(),
