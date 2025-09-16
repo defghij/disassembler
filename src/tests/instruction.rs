@@ -21,6 +21,7 @@ pub mod compendium {
 
         for rule in rules { // We dont know which rule will decode into an instruction
 
+            let (length, fixed) = rule.len();
             let requires_modrm = rule.modrm_required();
             println!("rule reported modrm required: {requires_modrm}");
 
@@ -29,15 +30,30 @@ pub mod compendium {
                 let modrm = rule.modrm_byte(bytes[1]);
                 if modrm.is_some() {
                     println!("ModRM byte is valid");
-                    let _modrm = modrm.expect("Should be Some due to conditional");
+                    // This precedes that
+                    let modrm = modrm.expect("Should be Some due to conditional");
+                    
+                    if modrm.precedes_sib_byte() { // Need to handle SIB Byte.
+                        unimplemented!("SIB byte processing not implemented");
+                    }
 
-                    unimplemented!("ModRM Byte instructions not implemented yet");
+                    let bytes_remaining = modrm.bytes_remaining();
+
+                    println!("reported total instruction bytes: {length} + {bytes_remaining} = {}", length + bytes_remaining); 
+
+                    let prospective_bytes = bytes.get(0..bytes_remaining)
+                            .expect("Test should have enough bytes for decoding instruction");
+
+                    Bytes::from(offset.clone(), prospective_bytes, rule.clone())
+
                 } else {
                     Bytes::Uknown(bytes[0])
                 }
             } 
             else { // We can know the length of the instruction _a priori_
-                let length = rule.len();
+                let (length, fixed) = rule.len();
+                assert!(fixed);
+
                 println!("rule reported byte length: {length}");
 
                 let prospective_bytes = bytes.get(0..length)

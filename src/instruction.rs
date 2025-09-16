@@ -224,13 +224,44 @@ pub mod encoding {
         pub u8
     ); 
     impl ModRM {
-        pub const fn _len() -> usize { 
 
-            1 
+        pub fn precedes_sib_byte(&self) -> bool {
+            self.2 == 0b100
         }
 
-        /// Returns the different parts of the ModRM bytes: (MOD, REG, RM)
+        /// Returns the different parts of the [ModRM] bytes: (MOD, REG, RM)
         pub fn split(&self) -> (u8,u8,u8) { (self.0, self.1, self.2) }
+
+        pub fn as_byte(&self) -> u8 { let byte: u8 = self.into(); byte }
+
+        /// Uses the [ModRM] byte to estimate the number of bytes that remain (after and including
+        /// this [ModRM] byte) in the instruction that this byte may reside in and encode. This
+        /// information is derived from Table 2-2 of the Intel Intel64 and IA-32 Arch Manual
+        ///
+        /// This function does not include lengths of [Sib] byte derived operands.
+        ///
+        /// Example: a byte value of `0xF1`, then this function would return $1$ which include 1
+        /// [ModRM] byte and zero other bytes. 
+        pub fn bytes_remaining(&self) -> usize {
+            let byte: u8 = self.into();
+            let remaining = match byte {
+                0x00 ..= 0x3F => {
+                    if self.2 == 0b101 { 4 } else
+                    if self.2 == 0b100 { unimplemented!("SIB byte length not implemented") } 
+                    else { 0 }
+                },
+                0x40 ..= 0x7F => {
+                    if self.2 == 0b100 { unimplemented!("SIB byte length not implemented") } 
+                    else { 1 }
+                },
+                0x80 ..= 0xBF => {
+                    if self.2 == 0b100 { unimplemented!("SIB byte length not implemented") } 
+                    else { 4 }
+                },
+                0xC0 ..= 0xFF => { 0 }
+            }; 
+            remaining + 1 // modrm byte
+        }
 
         #[allow(unused)]
         fn syntax(&self) -> Result<String,DecodeError>  {
@@ -250,6 +281,13 @@ pub mod encoding {
                 }
                 _ => Err(DecodeError::InvalidAddressingMode),
             }
+        }
+    }
+    impl From<&ModRM> for u8 {
+        fn from(value: &ModRM) -> Self {
+            ((value.0 << 6) & 0b11000000) &
+            ((value.1 << 3) & 0b00111000) &
+            ((value.2 << 0) & 0b00000111)
         }
     }
     impl From<u8> for ModRM {

@@ -86,12 +86,12 @@ impl Bytes {
 
         let byte = bytes[0];
         let opcode: u8 = op_code.0[0];
-        let instruction_length = rule.len();
+        let (instruction_length, fixed) = rule.len();
         let opcode_length = rule.op_code().len();
         let mut instruction = Instruction::new(mnemonic);
 
         match op_encode {
-            OpEn::O => {
+            OpEn::O  => {
 
                 // All Single byte OpEn::O instructions _should have one and only one extension
                 // "/rd"
@@ -120,7 +120,7 @@ impl Bytes {
                 }
                 else { Bytes::Uknown(bytes[0]) } 
             },
-            OpEn::I => {
+            OpEn::I  => {
                 // Validate instruction assumptions.
                 if op_code.len() != 1   { return Bytes::Uknown(bytes[0]); }
                 if extensions.is_none() { return Bytes::Uknown(bytes[0]); }
@@ -151,7 +151,7 @@ impl Bytes {
                     instruction: instruction.clone()
                 }
             }
-            OpEn::D => {
+            OpEn::D  => {
                 let displacement_length = instruction_length - opcode_length;
 
                 let range = (opcode_length.. opcode_length + displacement_length);
@@ -221,6 +221,23 @@ impl Bytes {
                     }
                 }
             }
+            OpEn::M => { 
+                if extensions.is_none() { Bytes::Uknown(bytes[0]) } 
+                else {
+                    let extensions = extensions.expect("Should be some due to conditional");
+                    let mut instruction = Instruction::new(mnemonic);
+
+                    if extensions.contains(&Extension::S0) {
+                        let reg_value = byte - opcode;
+
+                        let register = Register::try_from(reg_value)
+                            .expect("Opcde and Byte should be within the register range");
+
+                        instruction.add(Operand::Register(register));
+                    }
+                    unimplemented!("From not implemented for OpEn::M") 
+                }
+            },
             _ => unimplemented!("Operand Encoding not implemented"),
         }
 
@@ -278,38 +295,49 @@ impl DecodeRule {
     pub fn separate(&self) -> (&'static str, Option<Prefix>, OpCode, Option<Vec<Extension>>, OpEn, Option<AddressingModes>) {
         ( self.0, self.1.clone(), self.2.clone(), self.extensions(), self.4.clone(), self.5.clone())
     }
-    /// Returns the length, in bytes, of the instruction
-    /// that the rule encodes
-    pub fn len(&self) -> usize {
+
+    /// Returns a minimum length that is needed to encode the instruction and a bool indicating
+    /// whether the value yielded is definitive.
+    ///
+    /// A return value of (2, true), means the true length of the instruction is 2. A return result
+    /// of (2, false) means that this is a minimum length of the instruction and follow on
+    /// processing will likely be needed to determine the actual length of the instruction byte
+    /// stream.
+    pub fn len(&self) -> (usize, bool) {
         let (mnemonic, prefix, op_code, extensions, op_encoding, addr_modes) = self.separate();
         
         if op_code.len() == 1 && op_encoding.operand_count() == 0 {
-            return 1;
+            return (1,true);
         }
 
         // This match statement currently has a lot of duplicated code. If iterating over extension
         // operand length turns out to be sufficient this can be reduced/removed.
         match op_encoding {
             OpEn::I | OpEn::OI | OpEn::D => {
-                let extensions = extensions.as_ref().expect("All Rules with an OpEn::OI should require an extension");
+                let extensions = extensions.as_ref().expect("All rules in this match statement should require an extension");
                 let bytes = extensions.iter()
                     .filter(|ext| ext.operand_length().is_some())
                     .fold(0, |acc, ext| acc + ext.operand_length().expect("Should be some due to fiter") );
 
-                op_code.len() + bytes
+                (op_code.len() + bytes, true)
             },
-            OpEn::RM => unimplemented!("`len not implemented for this Operand Encoding"),
-            OpEn::MR => unimplemented!("`len not implemented for this Operand Encoding"),
-            OpEn::MI => unimplemented!("`len not implemented for this Operand Encoding"),
+            OpEn::RM => unimplemented!("`len` not implemented for this Operand Encoding"),
+            OpEn::MR => unimplemented!("`len` not implemented for this Operand Encoding"),
+            OpEn::MI => unimplemented!("`len` not implemented for this Operand Encoding"),
             OpEn::M => {
-                unimplemented!("`len not implemented for this Operand Encoding")
+                let extensions = extensions.as_ref().expect("All Rules with an OpEn::M encoding should require an extension");
+                let bytes = extensions.iter()
+                    .filter(|ext| ext.operand_length().is_some())
+                    .fold(0, |acc, ext| acc + ext.operand_length().expect("Should be some due to fiter") );
+
+                (op_code.len() + bytes, false)
             },
-            OpEn::NP => unimplemented!("`len not implemented for this Operand Encoding"),
-            OpEn::ZO => unimplemented!("`len not implemented for this Operand Encoding"),
-            OpEn::ZO => unimplemented!("`len not implemented for this Operand Encoding"),
-            OpEn::O => unimplemented!("`len not implemented for this Operand Encoding"),
-            OpEn::FD => unimplemented!("`len not implemented for this Operand Encoding"),
-            OpEn::TD => unimplemented!("`len not implemented for this Operand Encoding"),
+            OpEn::NP => unimplemented!("`len` not implemented for this Operand Encoding"),
+            OpEn::ZO => unimplemented!("`len` not implemented for this Operand Encoding"),
+            OpEn::ZO => unimplemented!("`len` not implemented for this Operand Encoding"),
+            OpEn::O  => unimplemented!("`len` not implemented for this Operand Encoding"),
+            OpEn::FD => unimplemented!("`len` not implemented for this Operand Encoding"),
+            OpEn::TD => unimplemented!("`len` not implemented for this Operand Encoding"),
         }
 
         //let mut len: usize = 0; 
