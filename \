@@ -225,9 +225,9 @@ impl Bytes {
                 if extensions.is_none() { Bytes::Uknown(bytes[0]) } 
                 else {
                     let extensions = extensions.expect("Should be some due to conditional");
-                    println!("opcode_length = {opcode_length}, bytes length = {}", instruction_length);
+                    println!("opcode_length = {opcode_length}, bytes length = {}", bytes.len());
 
-                    if rule.modrm_required() && instruction_length == 1 { return Bytes::Uknown(bytes[0]); }
+                    if rule.modrm_required() && opcode_length == 1 { return Bytes::Uknown(bytes[0]); }
 
                     let modrm_byte = rule.modrm_byte(bytes[opcode_length]);
                     if modrm_byte.is_none() { return Bytes::Uknown(bytes[0]); }
@@ -247,6 +247,7 @@ impl Bytes {
                        //extensions.contains(&Extension::S7) && reg_bits == 7
                     //{
                     //}
+                    println!("HERE");
 
                     let reg_value = byte - opcode;
 
@@ -338,11 +339,10 @@ impl DecodeRule {
         match op_encoding {
             OpEn::I | OpEn::OI | OpEn::D => {
                 let extensions = extensions.as_ref().expect("All rules in this match statement should require an extension");
-                let mut bytes = extensions.iter()
+                let bytes = extensions.iter()
                     .filter(|ext| ext.operand_length().is_some())
                     .fold(0, |acc, ext| acc + ext.operand_length().expect("Should be some due to fiter") );
 
-                if self.modrm_required() { bytes += 1 }
                 (op_code.len() + bytes, true)
             },
             OpEn::RM => unimplemented!("`len` not implemented for this Operand Encoding"),
@@ -350,11 +350,10 @@ impl DecodeRule {
             OpEn::MI => unimplemented!("`len` not implemented for this Operand Encoding"),
             OpEn::M => {
                 let extensions = extensions.as_ref().expect("All Rules with an OpEn::M encoding should require an extension");
-                let mut bytes = extensions.iter()
+                let bytes = extensions.iter()
                     .filter(|ext| ext.operand_length().is_some())
                     .fold(0, |acc, ext| acc + ext.operand_length().expect("Should be some due to fiter") );
 
-                if self.modrm_required() { bytes += 1 }
                 (op_code.len() + bytes, false)
             },
             OpEn::NP => unimplemented!("`len` not implemented for this Operand Encoding"),

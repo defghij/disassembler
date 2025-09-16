@@ -41,10 +41,12 @@ pub mod compendium {
 
                     println!("reported total instruction bytes: {length} + {bytes_remaining} = {}", length + bytes_remaining); 
 
-                    let prospective_bytes = bytes.get(0..bytes_remaining)
+                    let prospective_bytes = bytes.get(0.. length + bytes_remaining)
                             .expect("Test should have enough bytes for decoding instruction");
 
-                    Bytes::from(offset.clone(), prospective_bytes, rule.clone())
+                    let b = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
+                    println!("{b}");
+                    b
 
                 } else {
                     Bytes::Uknown(bytes[0])

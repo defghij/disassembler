@@ -234,14 +234,14 @@ pub mod encoding {
 
         pub fn as_byte(&self) -> u8 { let byte: u8 = self.into(); byte }
 
-        /// Uses the [ModRM] byte to estimate the number of bytes that remain (after and including
+        /// Uses the [ModRM] byte to estimate the number of bytes that remain (after
         /// this [ModRM] byte) in the instruction that this byte may reside in and encode. This
         /// information is derived from Table 2-2 of the Intel Intel64 and IA-32 Arch Manual
         ///
         /// This function does not include lengths of [Sib] byte derived operands.
         ///
-        /// Example: a byte value of `0xF1`, then this function would return $1$ which include 1
-        /// [ModRM] byte and zero other bytes. 
+        /// Example: a byte value of `0xF1`, then this function would return $0$ which does not
+        /// include the [ModRM] byte and there are no other bytes in the instruction decode
         pub fn bytes_remaining(&self) -> usize {
             let byte: u8 = self.into();
             let remaining = match byte {
@@ -260,7 +260,7 @@ pub mod encoding {
                 },
                 0xC0 ..= 0xFF => { 0 }
             }; 
-            remaining + 1 // modrm byte
+            remaining
         }
 
         #[allow(unused)]
@@ -666,6 +666,24 @@ pub mod encoding {
 
         #[derive(Clone, Debug, PartialEq, Eq, Hash)]
         pub struct ExtSet(pub &'static [&'static str]);
+        impl ExtSet {
+
+            pub fn contains(&self, rhs: Extension) -> bool {
+
+                let result: Vec<bool> = self.0
+                    .iter()
+                    .filter_map(|ext| {
+                        let lhs = Extension::try_from(*ext);
+                        if lhs.is_err() { None }
+                        else {
+                            let lhs = lhs.expect("Should be Ok from conditional");
+                            if lhs == rhs { Some(true) }
+                            else { None }
+                        }
+                    }).collect();
+                result.contains(&true)
+            }
+        }
 
         #[derive(Clone, Debug, PartialEq, Eq, Hash)]
         pub enum Extension {
