@@ -14,43 +14,42 @@ pub mod compendium {
         let mut output = Output::new(10);
 
         let offset = Offset(0); // All test instructions start at Address Zero
+        println!("");
+        println!("");
         println!("Checking\n:{expected}");
+        println!("----------------------------------------");
 
         let rules = DecodeRules::get(&bytes[0])
             .expect("Should be a defined opcode mapping");
-
+        
         for rule in rules { // We dont know which rule will decode into an instruction
+            println!("");
+            println!("Attempting Decode using rule: {rule:?}");
+            println!("----------------------------------------");
 
-            let (length, fixed) = rule.len();
+            let (length, _fixed) = rule.len();
             let requires_modrm = rule.modrm_required();
             println!("rule reported modrm required: {requires_modrm}");
 
             let instruction = if requires_modrm { // We must decode bytes beyond the first to determine length
 
-                let modrm = rule.modrm_byte(bytes[1]);
-                if modrm.is_some() {
-                    println!("ModRM byte is valid");
-                    // This precedes that
-                    let modrm = modrm.expect("Should be Some due to conditional");
-                    
-                    if modrm.precedes_sib_byte() { // Need to handle SIB Byte.
-                        unimplemented!("SIB byte processing not implemented");
-                    }
+                let Some(modrm) = rule.modrm_byte(bytes[1]) else { continue };
+                println!("Got ModRM Byte");
 
-                    let bytes_remaining = modrm.bytes_remaining();
+                if modrm.precedes_sib_byte() { unimplemented!("SIB byte processing not implemented"); }
 
-                    println!("reported total instruction bytes: {length} + {bytes_remaining} = {}", length + bytes_remaining); 
+                let bytes_remaining = modrm.bytes_remaining();
+                println!("reported total instruction bytes: {length} + {bytes_remaining} = {}", length + bytes_remaining); 
 
-                    let prospective_bytes = bytes.get(0.. length + bytes_remaining)
-                            .expect("Test should have enough bytes for decoding instruction");
+                let prospective_bytes = bytes.get(0.. length + bytes_remaining)
+                        .expect("Test should have enough bytes for decoding instruction");
 
-                    let b = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
-                    println!("{b}");
-                    b
+                let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
 
-                } else {
-                    Bytes::Uknown(bytes[0])
-                }
+                let instruction = if decode_attempt.is_ok() { decode_attempt.expect("Ok due to conditional") }
+                else { continue };
+                
+                instruction
             } 
             else { // We can know the length of the instruction _a priori_
                 let (length, fixed) = rule.len();
@@ -61,7 +60,12 @@ pub mod compendium {
                 let prospective_bytes = bytes.get(0..length)
                     .expect("Test should have enough bytes for decoding instruction");
 
-                Bytes::from(offset.clone(), prospective_bytes, rule.clone())
+                let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
+
+                let instruction = if decode_attempt.is_ok() { decode_attempt.expect("Ok due to conditional") }
+                else { continue };
+
+                instruction
             };
 
             println!("Attempted Instruction\n:{instruction:?}");

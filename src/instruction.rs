@@ -2,9 +2,12 @@ use std::fmt::Display;
 
 use crate::decode::DecodeError;
 use encoding::operands::{
-    Displacement, Immediate, Offset, Operand, Register
+    Offset, 
+    Operand, 
+    //Displacement, 
+    //Immediate, 
+    //Register
 };
-use memory::Memory;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Instruction {
@@ -87,14 +90,7 @@ impl Display for Instruction {
             let operands = operands
                 .iter()
                 .map(|o| {
-                    if matches!(o, Operand::Displacement(_)) {
-                        let o: Offset = o.displacement()
-                            .expect("Should be Displacement due to the match statement")
-                            .into();
-                        o.to_string()
-                    } else {
-                        o.to_string()
-                    }
+                    o.to_string()
                 })
                 .collect::<Vec<String>>()
                 .join(", ");
@@ -145,47 +141,6 @@ impl OpEn {
 
     }
 
-}
-
-/// OperandEncoding as described by the Intel instruction manual
-/// for the required instructions.
-#[allow(unused)]
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-enum OperandEncoding {
-    /// ModRM:reg & ModRM:r/m
-    RM {register: Register, memory: Memory },
-
-    /// ModRM:r/m & ModRM:reg
-    MR { memory: Memory, register: Register },
-
-    /// ModRM:r/m & imm8/16/32
-    MI { memory: Memory, immediate: Immediate },
-
-    /// ModRM:r/m  
-    M  { memory: Memory },
-
-    /// imm8/16/32
-    /// May also have implied register such as `add eax imm32`
-    I(Immediate),
-
-    /// NoOp
-    NP,
-
-    /// Zero Operands
-    ZO,
-
-    /// Add register number to the Opcode
-    O,
-
-    /// 1st: Add register number to Opcode
-    /// 2nd: Immediate
-    OI(Immediate),
-
-    /// Relative Displacement
-    D(Displacement),
-
-    /// Treat Moffs as Imm32
-    FD, TD
 }
 
 pub mod memory {
@@ -359,15 +314,28 @@ pub mod encoding {
     pub mod operands {
         use super::*;
 
+
+        /// Structure for use in [Operand] for capturing the structure of the operand so it can be
+        /// transformed into a string for printing and displaying.
+        #[derive(Clone, Debug, PartialEq)]
+        pub struct EffectiveAddress {
+            rm: Option<Register>,
+            displacement: Option<Displacement>,
+            immediate: Option<Immediate>,
+            address_mode: u8,
+        }
+
         #[allow(unused)]
         #[derive(Clone, Debug, PartialEq)]
         pub enum Operand {
             Register(Register),
             Immediate(Immediate),
             Displacement(Displacement),
+            EffectiveAddress(EffectiveAddress),
             Label(Offset),
         }
         impl Operand {
+            #[allow(unused)]
             pub fn displacement(&self) -> Option<Displacement> {
                 match self {
                     Operand::Displacement(displacement) => Some(displacement.clone()),
@@ -382,6 +350,9 @@ pub mod encoding {
                     Operand::Immediate(immediate) => immediate.to_string(),
                     Operand::Displacement(displacement) => displacement.to_string(),
                     Operand::Label(offset) => offset.to_string(),
+                    Operand::EffectiveAddress(_effective_address) => {
+                        todo!()
+                    },
                 };
                 write!(f, "{out}")
             }
@@ -472,10 +443,11 @@ pub mod encoding {
         }
 
         #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+        #[allow(unused)]
         pub enum Displacement {
-            Rel8(u32),
-            Rel16(u32),
-            Rel32(u32)
+            Rel8(u32), Rel16(u32), Rel32(u32),
+            Abs8(u32), Abs16(u32), Abs32(u32)
+
         }
         impl Displacement {
             /// The number of bytes contained in the Displacement
@@ -483,9 +455,9 @@ pub mod encoding {
             #[allow(unused)]
             pub fn len(&self) -> usize {
                 match self {
-                    Displacement::Rel8(_) => 1,
-                    Displacement::Rel16(_) => 2,
-                    Displacement::Rel32(_) => 3,
+                    Displacement::Rel8(_)  | Displacement::Abs8(_)  => 1,
+                    Displacement::Rel16(_) | Displacement::Abs16(_) => 2,
+                    Displacement::Rel32(_) | Displacement::Abs32(_) => 4,
                 }
             }
 
@@ -494,10 +466,13 @@ pub mod encoding {
                     Displacement::Rel8(d)  => *d,
                     Displacement::Rel16(d) => *d,
                     Displacement::Rel32(d) => *d,
+                    Displacement::Abs8(d)  => *d,
+                    Displacement::Abs16(d) => *d,
+                    Displacement::Abs32(d) => *d,
                 }
             }
 
-            pub fn from_byte(address: Offset, opcode_length: usize, operand: &[u8;1]) -> Displacement {
+            pub fn from_byte_relative(address: Offset, opcode_length: usize, operand: &[u8;1]) -> Displacement {
                 let base = address.0 + opcode_length as u32 + operand.len() as u32;
 
                 let displacement = byte_to_double_with_sign_extend(*operand);
@@ -508,7 +483,7 @@ pub mod encoding {
                 Displacement::Rel8(target)
             }
 
-            pub fn from_word(address: Offset, opcode_length: usize, operand: &[u8;2]) -> Displacement {
+            pub fn from_word_relative(address: Offset, opcode_length: usize, operand: &[u8;2]) -> Displacement {
                 let base = address.0 + opcode_length as u32 + operand.len() as u32;
 
                 let displacement = word_to_double_with_sign_extend(*operand);
@@ -517,7 +492,7 @@ pub mod encoding {
                 Displacement::Rel16(target)
             }
 
-            pub fn from_double(address: Offset, opcode_length: usize, operand: &[u8;4]) -> Displacement {
+            pub fn from_double_relative(address: Offset, opcode_length: usize, operand: &[u8;4]) -> Displacement {
                 let base = address.0 + opcode_length as u32 + operand.len() as u32;
 
                 let displacement = u32::from_le_bytes(*operand);
@@ -528,8 +503,18 @@ pub mod encoding {
         }
         impl Display for Displacement {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                let disp = self.get_inner();
-                write!(f, "{disp:X}")
+                let string = match self {
+                    // This case may be incorrect
+                    Displacement::Rel8(d) |
+                    Displacement::Rel16(d) |
+                    Displacement::Rel32(d) =>  {let offset = Offset(*d); offset.to_string()},
+
+                    // This will not work long term. 
+                    Displacement::Abs8(d)  |
+                    Displacement::Abs16(d) |
+                    Displacement::Abs32(d) => format!("0x{d:08X}"),
+                };
+                write!(f, "{string}")
             }
         }
 
@@ -668,8 +653,8 @@ pub mod encoding {
         pub struct ExtSet(pub &'static [&'static str]);
         impl ExtSet {
 
+            #[allow(unused)]
             pub fn contains(&self, rhs: Extension) -> bool {
-
                 let result: Vec<bool> = self.0
                     .iter()
                     .filter_map(|ext| {
@@ -682,6 +667,18 @@ pub mod encoding {
                         }
                     }).collect();
                 result.contains(&true)
+            }
+
+            /// This function will yield the _first_ sdigit (/digit) extension defined by the
+            /// decoding rule. 
+            ///
+            /// Assumption is that encoding rules make use of one and only one sdigit 
+            /// extension.
+            pub fn get_sdigit(&self) -> Option<Extension> {
+                self.0.iter()
+                    .find_map(|ext| {
+                        Extension::try_from(*ext).ok()
+                    })
             }
         }
 
@@ -696,6 +693,22 @@ pub mod encoding {
 
         }
         impl Extension {
+
+            pub fn is_sdigit(&self, value: u8) -> bool {
+                let sdigit = match self {
+                    Extension::S0 => 0,
+                    Extension::S1 => 1,
+                    Extension::S2 => 2,
+                    Extension::S3 => 3,
+                    Extension::S4 => 4,
+                    Extension::S5 => 5,
+                    Extension::S6 => 6,
+                    Extension::S7 => 7,
+                    _ => return false,
+                }; 
+                sdigit == value
+            }
+
             pub fn operand_length(&self) -> Option<usize> {
                 match self {
                     Extension::IB => Some(1),
