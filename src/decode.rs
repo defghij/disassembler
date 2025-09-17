@@ -1,24 +1,6 @@
 use std::fmt::Display;
 
-#[derive(Clone, Debug, PartialEq, Hash)]
-pub enum DecodeError {
-    DecodeFailure,
-    NoBytesPresent,
-    UnknownOpcode,
-    InvalidModRM,
-    InvalidLength,
-    InvalidAddressingMode,
-    InvalidOpCodeExtension,
-    InvalidOpCodeLength,
-    InvalidRegister,
-    InvalidAddress(u32),
-    InvalidImmediateSize(usize),
-    InvalidDisplacementByteWidth,
-    _IllegalAddressMode,
-    _AddressConflict(u32),
-}
-
-use crate::instruction::encoding::operands::Offset;
+use crate::instruction::encoding::{operands::{EffectiveAddress, Offset}, ModBits};
 #[allow(unused)]
 use crate::{
     opcodes::DecodeRules,
@@ -36,6 +18,24 @@ use crate::{
         }
     }
 };
+
+#[derive(Clone, Debug, PartialEq, Hash)]
+pub enum DecodeError {
+    DecodeFailure,
+    NoBytesPresent,
+    UnknownOpcode,
+    InvalidModRM,
+    InvalidLength,
+    InvalidAddressingMode,
+    InvalidOpCodeExtension,
+    InvalidOpCodeLength,
+    InvalidRegister,
+    InvalidAddress(u32),
+    InvalidImmediateSize(usize),
+    InvalidDisplacementByteWidth,
+    _IllegalAddressMode,
+    _AddressConflict(u32),
+}
 
 #[allow(unused)]
 #[derive(Clone, Debug, PartialEq)]
@@ -189,7 +189,6 @@ impl Bytes {
                     },
                     _ => return Err(DecodeError::InvalidDisplacementByteWidth),
                 };
-                let mut instruction = Instruction::new(mnemonic);
                 instruction.add(Operand::Displacement(displacement));
 
                 Ok(Bytes::Decoded {
@@ -200,8 +199,6 @@ impl Bytes {
             OpEn::OI => {
                 let Some(extensions) = extensions 
                 else { return Err(DecodeError::InvalidOpCodeExtension); };
-
-                let mut instruction = Instruction::new(mnemonic);
 
                 if extensions.contains(&Extension::RD) {
                     let reg_value = byte - opcode;
@@ -242,14 +239,12 @@ impl Bytes {
                 let Some(modrm) = rule.modrm_byte(bytes[opcode_length])
                 else { return Err(DecodeError::InvalidModRM); };
                     
-                if !addr_modes.is_some_and(|a| a.0.contains(&modrm.0)) { 
+                if !addr_modes.is_some_and(|a| a.0.contains(&modrm.0.into())) { 
                     return Err(DecodeError::InvalidAddressingMode); 
                 }
 
-                let mut instruction = Instruction::new(mnemonic);
-
                 match modrm.0 {
-                    0b00 => {
+                    ModBits::OO => {
                         match modrm.2 {
                             0b100 => { unimplemented!("SIB byte not implemented for this address mode") },
                             0b101 => { 
@@ -264,29 +259,80 @@ impl Bytes {
                                 let Ok(displacement) = <[u8;4]>::try_from(displacement) 
                                 else { return Err(DecodeError::DecodeFailure); };
 
+                                // Is this the right thing? Endianess hurts my brain...
+                                let displacement = u32::from_le_bytes(displacement);
+
+                                let displacement = EffectiveAddress::displacement(displacement);
+
                                 //let displacement = Displacement::from_double_absolute(&displacement);
-                                //instruction.add(Operand::Displacement(displacement));
-                                unimplemented!("Need to implement EffectiveAddress output for [ disp32 ] first");
+                                instruction.add(Operand::EffectiveAddress(displacement));
+                                //unimplemented!("Need to implement EffectiveAddress output for [ disp32 ] first");
                             },
                             _     => { 
                                 let Ok(register) = Register::try_from(modrm.2)
                                 else { return Err(DecodeError::InvalidRegister); };
-                                //let effective_address = EffectiveAddress::from();?
-                                //instruction.add(Operand::EffectiveAddress(register));
-                                unimplemented!("Need to implement EffectiveAddress output for [ reg ] first");
+                                let register = EffectiveAddress::base(register);
+
+                                instruction.add(Operand::EffectiveAddress(register));
                             }
 
                         }
                     },
-                    0b01 => {unimplemented!("Addressing mode not implemented")},
-                    0b10 => {unimplemented!("Addressing mode not implemented")},
-                    0b11 => {
+                    ModBits::OI => {
+                        match modrm.2 {
+                            0b100 => { unimplemented!("SIB byte not implemented for this address mode") },
+                            _ => { 
+                                let base: usize = opcode_length + 1/*modrm byte*/;
+
+                                // This should probably really be a panic as it means a fundamental
+                                // flaw in parsing logic.
+                                if bytes.len() < base + 1 { return Err(DecodeError::InvalidLength); }
+
+                                let displacement: &[u8] = bytes.get(base..base+1).expect("Length bounds should be correct due to assert");
+
+                                let Ok(displacement) = <[u8;1]>::try_from(displacement) 
+                                else { return Err(DecodeError::InvalidDisplacementByteWidth); };
+
+                                let displacement = EffectiveAddress::base_d8(modrm.1, displacement[0]);
+
+                                //let displacement = Displacement::from_double_absolute(&displacement);
+                                instruction.add(Operand::EffectiveAddress(displacement));
+                                //unimplemented!("Need to implement EffectiveAddress output for [ disp32 ] first");
+                            },
+                        }
+
+                    },
+                    ModBits::IO => {
+                        match modrm.2 {
+                            0b100 => { unimplemented!("SIB byte not implemented for this address mode") },
+                            _ => { 
+                                let base: usize = opcode_length + 1/*modrm byte*/;
+                                let displacement_width: usize = 4;
+
+                                // This should probably really be a panic as it means a fundamental
+                                // flaw in parsing logic.
+                                if bytes.len() < base + 4 { return Err(DecodeError::InvalidLength); }
+
+                                let displacement: &[u8] = bytes.get(base..base+4).expect("Length bounds should be correct due to assert");
+
+                                let Ok(displacement) = <[u8;4]>::try_from(displacement) 
+                                else { return Err(DecodeError::DecodeFailure); };
+
+                                // Is this the right thing? Endianess hurts my brain...
+                                let displacement = u32::from_le_bytes(displacement);
+
+                                let displacement = EffectiveAddress::base_d32(modrm.1, displacement);
+
+                                instruction.add(Operand::EffectiveAddress(displacement));
+                            },
+                        }
+                    },
+                    ModBits::II => {
                         let Ok(register) = Register::try_from(modrm.2)
                         else { return Err(DecodeError::InvalidRegister); };
 
                         instruction.add(Operand::Register(register));
                     }
-                    _ => return Err(DecodeError::InvalidAddressingMode)
                 }
 
                 Ok(Bytes::Decoded {
@@ -405,7 +451,7 @@ impl DecodeRule {
     pub fn modrm_byte(&self, byte: u8) -> Option<ModRM> {
         let ext_set      = self.3.clone();
         let addr_mode    = self.5.clone(); 
-        let modrm        = ModRM::from(byte); 
+        let Ok(modrm)        = ModRM::try_from(byte) else { return None; }; 
         let (md, rg, rm) = modrm.split();
 
         // Check that if extension dictates a value in the modrm byte that it is set.
@@ -414,7 +460,7 @@ impl DecodeRule {
             let Some(sdigit) = extensions.get_sdigit() else { return None };
 
             // Decoding rule and ModRM have incompatible REG bits.
-            if !sdigit.is_sdigit(rg) { 
+            if !sdigit.is_sdigit(rg as u8) { 
                 return None; }
         }
 
@@ -424,7 +470,7 @@ impl DecodeRule {
             let addressing_mode = addr_mode.as_ref().expect("Should be some due to conditional");
 
             // Decoding rule and ModRM have incompatible MOD bits
-            if !addressing_mode.0.contains(&md) { return None; }
+            if !addressing_mode.0.contains(&md.into()) { return None; }
         }
         Some(modrm)
     }

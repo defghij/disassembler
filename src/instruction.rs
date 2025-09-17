@@ -150,6 +150,7 @@ pub mod memory {
 
 pub mod encoding {
     use super::*;
+    use operands::Register;
 
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -165,15 +166,53 @@ pub mod encoding {
     #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
     pub struct AddressingModes(pub &'static [u8]);
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub enum ModBits {
+        /// 0b00
+        OO = 0b00,
+        /// 0b01
+        OI = 0b01,
+        /// 0b10
+        IO = 0b10,
+        /// 0b11
+        II = 0b11,
+    }
+    impl TryFrom<u8> for ModBits {
+        type Error = DecodeError;
+
+        fn try_from(value: u8) -> Result<Self, Self::Error> {
+            match value {
+                0b00 => Ok(ModBits::OO),
+                0b01 => Ok(ModBits::OI),
+                0b10 => Ok(ModBits::IO),
+                0b11 => Ok(ModBits::II),
+                _ => Err(DecodeError::DecodeFailure)
+            }
+        }
+    }
+    impl From<ModBits> for u8 {
+        fn from(value: ModBits) -> Self {
+            value as u8
+        }
+    }
+    impl Default for ModBits {
+        /// Returns the variant with the value equivalent to 0.
+        fn default() -> Self {
+            ModBits::OO
+        }
+    }
+
+
+
     #[allow(unused)]
-    #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
     pub struct ModRM (
         /// MOD
         /// Only low two bits are valid
-        pub u8,
+        pub ModBits,
         /// REG
         /// Only low three bits are valid
-        pub u8,
+        pub Register,
         // RM
         // Only low three bits are valid
         pub u8
@@ -185,7 +224,7 @@ pub mod encoding {
         }
 
         /// Returns the different parts of the [ModRM] bytes: (MOD, REG, RM)
-        pub fn split(&self) -> (u8,u8,u8) { (self.0, self.1, self.2) }
+        pub fn split(&self) -> (ModBits, Register, u8) { (self.0.clone(), self.1.clone(), self.2.clone()) }
 
         pub fn as_byte(&self) -> u8 { let byte: u8 = self.into(); byte }
 
@@ -199,6 +238,7 @@ pub mod encoding {
         /// include the [ModRM] byte and there are no other bytes in the instruction decode
         pub fn bytes_remaining(&self) -> usize {
             let byte: u8 = self.into();
+            println!("MODRM byte: 0x{byte:02X}");
             let remaining = match byte {
                 0x00 ..= 0x3F => {
                     if self.2 == 0b101 { 4 } else
@@ -221,37 +261,41 @@ pub mod encoding {
         #[allow(unused)]
         fn syntax(&self) -> Result<String,DecodeError>  {
             match self.0 {
-                0b00 => {
+                ModBits::OO => {
                     Ok("todo".to_string())
                 },
-                0b01 => { // [r/m + byte]
+                ModBits::OI => { // [r/m + byte]
                     Ok("todo".to_string())
                 },
-                0b10 => { // [r/m + dword] 
+                ModBits::IO => { // [r/m + dword] 
                     Ok("todo".to_string())
                 },
-                0b11 => { // r/m
-
+                ModBits::II => { // r/m
                     Ok("todo".to_string())
                 }
                 _ => Err(DecodeError::InvalidAddressingMode),
             }
         }
     }
-    impl From<&ModRM> for u8 {
-        fn from(value: &ModRM) -> Self {
-            ((value.0 << 6) & 0b11000000) &
-            ((value.1 << 3) & 0b00111000) &
-            ((value.2 << 0) & 0b00000111)
+    impl TryFrom<u8> for ModRM {
+        type Error = DecodeError;
+
+        fn try_from(value: u8) -> Result<Self, Self::Error> {
+            let modbits = ModBits::try_from((value & 0b11000000) >> 6)?;
+            let regbits = Register::try_from((value & 0b00111000) >> 3)?;
+            let rmbits = (value & 0b00000111) >> 0;
+            Ok(Self (modbits, regbits, rmbits))
         }
     }
-    impl From<u8> for ModRM {
-        fn from(value: u8) -> Self {
-            Self (
-                (value & 0b11000000) >> 6,
-                (value & 0b00111000) >> 3,
-                (value & 0b00000111) >> 0,
-            )
+    impl From<&ModRM> for u8 {
+        fn from(value: &ModRM) -> Self {
+            let modbits = value.0.clone() as u8;
+            let regbits = value.1.clone() as u8;
+            let rmbits  = value.2.clone() as u8;
+
+            (modbits << 6) |
+            (regbits << 3) |
+            (rmbits  << 0)
         }
     }
 
@@ -273,7 +317,7 @@ pub mod encoding {
 
         /// Returns the format str that can be used to print an instruction. 
         fn _format_string(&self, modrm: ModRM) -> &str {
-            let special_case = self.2 == 0b101 && modrm.0 == 0b00;
+            let special_case = self.2 == 0b101 && modrm.0 != ModBits::II;
             match self.0 {
                 0b00 => { "[ {} + {}]" },
                 0b01 => { 
@@ -318,11 +362,115 @@ pub mod encoding {
         /// Structure for use in [Operand] for capturing the structure of the operand so it can be
         /// transformed into a string for printing and displaying.
         #[derive(Clone, Debug, PartialEq)]
-        pub struct EffectiveAddress {
-            rm: Option<Register>,
-            displacement: Option<Displacement>,
-            immediate: Option<Immediate>,
-            address_mode: u8,
+        pub enum EffectiveAddress {
+             /// reg
+            Register { reg: Register },
+
+            /// [index*scale + disp32]
+            IndexDisplacement { index: Register, scale: Scale, displacement: u32 },
+
+            /// [disp32] 
+            Displacement { displacement: u32 },
+
+            /// [base + disp?]
+            Base { base: Register, displacement: Displacement },
+
+            /// [base + index*scale + disp?]
+            BaseIndex { base: Register, index: Register, scale: Scale, displacement: Displacement },
+        }
+        impl EffectiveAddress {
+             /// reg
+            pub fn register(reg: Register) -> EffectiveAddress { 
+                EffectiveAddress::Register { reg }
+            }
+
+             /// [disp]
+            pub fn displacement(displacement: u32) -> EffectiveAddress { 
+                EffectiveAddress::Displacement{ displacement }
+            }
+
+            /// [base]
+            pub fn base(base: Register) -> EffectiveAddress {
+                EffectiveAddress::Base { base, displacement: Displacement::None }
+            }
+
+            /// [base + disp8]
+            pub fn base_d8(base: Register, displacement: u8) -> EffectiveAddress {
+                EffectiveAddress::Base { base, displacement: Displacement::Abs8(displacement) }
+            }
+
+            /// [base + disp32]
+            pub fn base_d32(base: Register, displacement: u32) -> EffectiveAddress {
+                EffectiveAddress::Base { base, displacement: Displacement::Abs32(displacement) }
+            }
+
+            /// [base + index*scale + disp8]
+            pub fn base_index_d8(base: Register, index: Register, scale:Scale, displacement: u8) -> EffectiveAddress {
+                EffectiveAddress::BaseIndex{ base, index, scale, displacement: Displacement::Abs8(displacement) }
+            }
+
+            /// [base + index*scale + disp32]
+            pub fn base_index_d32(base: Register, index: Register, scale:Scale, displacement: u32) -> EffectiveAddress {
+                EffectiveAddress::BaseIndex{ base, index, scale, displacement: Displacement::Abs32(displacement) }
+            }
+
+            /// [index*scale + disp32]
+            pub fn index_d32(index: Register, scale:Scale, displacement: u32) -> EffectiveAddress {
+                EffectiveAddress::IndexDisplacement { index, scale, displacement }
+            }
+        }
+        impl Display for EffectiveAddress {
+            /// The different ways in which an [EffectiveAddress] can be rendered to [String] are
+            /// dependent on the `address_mode` and which optional elements exist.
+            ///
+            /// Possibilities are:
+            /// - "[ `Register` ]" 
+            /// - "[ `Sib` ]"
+            /// - "[ `Diplacement::Abs32' ]"
+            /// - "[ `Register` + `Diplacement::Abs8` ]"
+            /// - "[ `Register` + `Diplacement::Abs32 ]"
+            /// - "[ `Sib` + `Diplacement::Abs32 ]"
+            /// - "`Register`" 
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                use EffectiveAddress::*;
+                match self {
+                    Register { reg } => { write!(f, "{}", reg) 
+                    },
+                    Displacement { displacement } => {
+                        write!(f, "[ 0x{:08X} ]", displacement)
+                    },
+                    IndexDisplacement { index, scale, displacement } => {
+                        write!(f, "[ {} * {} + 0x{:08X} ]", index, scale, displacement)
+                    }
+
+                    Base { base, displacement} => {
+                        match displacement {
+                            operands::Displacement::None => { write!(f, "[ {} ]", base) }
+                            _ => { write!(f, "[ {} + 0x{:08X} ]", base, displacement.get_inner()) }
+                        }
+                    }
+
+                    BaseIndex { base, index, scale, displacement } => {
+                        write!(f, "[ {index} * {scale} + {base} + 0x{:08X} ]", displacement.get_inner())
+                    }
+                }
+
+            }
+        }
+
+        #[derive(Clone, Debug, PartialEq)]
+        pub enum Scale { 
+            One = 1, Two = 2, 
+            Four = 4, Eight = 8
+        }
+        impl Display for Scale {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let scale = match self { 
+                    Scale::One => "1", Scale::Two => "2", 
+                    Scale::Four => "4", Scale::Eight => "8" 
+                };
+                write!(f, "{scale}")
+            }
         }
 
         #[allow(unused)]
@@ -346,13 +494,11 @@ pub mod encoding {
         impl Display for Operand {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 let out = match self {
-                    Operand::Register(register) => register.to_string(),
-                    Operand::Immediate(immediate) => immediate.to_string(),
+                    Operand::Register(register)         => register.to_string(),
+                    Operand::Immediate(immediate)       => immediate.to_string(),
                     Operand::Displacement(displacement) => displacement.to_string(),
-                    Operand::Label(offset) => offset.to_string(),
-                    Operand::EffectiveAddress(_effective_address) => {
-                        todo!()
-                    },
+                    Operand::Label(offset)              => offset.to_string(),
+                    Operand::EffectiveAddress(ea) => { ea.to_string()},
                 };
                 write!(f, "{out}")
             }
@@ -377,7 +523,7 @@ pub mod encoding {
         }
 
         #[allow(unused)]
-        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         pub enum Register {
             // Defined by MODRM byte
             EAX = 0, ECX = 1, EDX = 2, EBX = 3,
@@ -404,6 +550,12 @@ pub mod encoding {
                     7 => Ok(Register::EDI),
                     _ => Err(DecodeError::InvalidRegister),
                 }
+            }
+        }
+        impl Default for Register {
+            /// Returns the variant with the value equivalent to 0.
+            fn default() -> Self {
+                Register::EAX
             }
         }
         impl Display for Register {
@@ -445,8 +597,9 @@ pub mod encoding {
         #[derive(Clone, Debug, PartialEq, Eq, Hash)]
         #[allow(unused)]
         pub enum Displacement {
-            Rel8(u32), Rel16(u32), Rel32(u32),
-            Abs8(u32), Abs16(u32), Abs32(u32)
+            None,
+            Rel8(u8), Rel16(u16), Rel32(u32),
+            Abs8(u8), Abs16(u16), Abs32(u32)
 
         }
         impl Displacement {
@@ -455,19 +608,23 @@ pub mod encoding {
             #[allow(unused)]
             pub fn len(&self) -> usize {
                 match self {
+                    Displacement::None => 0,
                     Displacement::Rel8(_)  | Displacement::Abs8(_)  => 1,
                     Displacement::Rel16(_) | Displacement::Abs16(_) => 2,
                     Displacement::Rel32(_) | Displacement::Abs32(_) => 4,
                 }
             }
 
+            /// Returns a u32 of the inner integer. Note this may be upcast 
+            /// to [u32].
             pub fn get_inner(&self) -> u32 {
                 match self {
-                    Displacement::Rel8(d)  => *d,
-                    Displacement::Rel16(d) => *d,
+                    Displacement::None     => 0,
+                    Displacement::Rel8(d)  => *d as u32,
+                    Displacement::Rel16(d) => *d as u32,
                     Displacement::Rel32(d) => *d,
-                    Displacement::Abs8(d)  => *d,
-                    Displacement::Abs16(d) => *d,
+                    Displacement::Abs8(d)  => *d as u32,
+                    Displacement::Abs16(d) => *d as u32,
                     Displacement::Abs32(d) => *d,
                 }
             }
@@ -480,15 +637,15 @@ pub mod encoding {
                 println!("Target = {displacement} + {base}");
                 let target = displacement + base;
                 println!("Target: 0x{target:X}");
-                Displacement::Rel8(target)
+                Displacement::Rel8(target as u8)
             }
 
             pub fn from_word_relative(address: Offset, opcode_length: usize, operand: &[u8;2]) -> Displacement {
-                let base = address.0 + opcode_length as u32 + operand.len() as u32;
+                let base = address.0 as usize + opcode_length + operand.len();
 
-                let displacement = word_to_double_with_sign_extend(*operand);
-                let displacement = u32::from_be_bytes(displacement);
-                let target = displacement + base;
+                //let displacement = word_to_double_with_sign_extend(*operand);
+                let displacement = u16::from_be_bytes(*operand);
+                let target = displacement + base as u16; 
                 Displacement::Rel16(target)
             }
 
@@ -501,18 +658,22 @@ pub mod encoding {
                 Displacement::Rel32(target)
             }
         }
+        impl From<&Displacement> for u32 {
+            fn from(value: &Displacement) -> Self { value.get_inner() }
+        }
         impl Display for Displacement {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 let string = match self {
                     // This case may be incorrect
-                    Displacement::Rel8(d) |
-                    Displacement::Rel16(d) |
-                    Displacement::Rel32(d) =>  {let offset = Offset(*d); offset.to_string()},
+                    Displacement::Rel8(d)  =>  {let offset = Offset(*d as u32); offset.to_string()}, 
+                    Displacement::Rel16(d) =>  {let offset = Offset(*d as u32); offset.to_string()},
+                    Displacement::Rel32(d) =>  {let offset = Offset(*d);        offset.to_string()},
 
                     // This will not work long term. 
-                    Displacement::Abs8(d)  |
-                    Displacement::Abs16(d) |
+                    Displacement::Abs8(d)  => format!("0x{d:08X}"),
+                    Displacement::Abs16(d) => format!("0x{d:08X}"),
                     Displacement::Abs32(d) => format!("0x{d:08X}"),
+                    Displacement::None => "".into(),
                 };
                 write!(f, "{string}")
             }
@@ -524,6 +685,15 @@ pub mod encoding {
                 [0xFF, 0xFF, 0xFF, bytes[0]]
             } else {
                 [0x00, 0x00, 0x00, bytes[0]]
+            }
+        }
+
+        #[allow(unused)]
+        fn byte_to_word_with_sign_extend(bytes: [u8;1]) -> [u8;2] {
+            if bytes[0].leading_zeros() == 0 {
+                [0xFF, bytes[0]]
+            } else {
+                [0x00, bytes[0]]
             }
         }
 

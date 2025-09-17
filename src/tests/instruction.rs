@@ -39,6 +39,7 @@ pub mod compendium {
                 if modrm.precedes_sib_byte() { unimplemented!("SIB byte processing not implemented"); }
 
                 let bytes_remaining = modrm.bytes_remaining();
+                println!("ModRM: {modrm:?},  0x{:02X}", modrm.as_byte());
                 println!("reported total instruction bytes: {length} + {bytes_remaining} = {}", length + bytes_remaining); 
 
                 let prospective_bytes = bytes.get(0.. length + bytes_remaining)
@@ -168,16 +169,13 @@ pub mod compendium {
             ("00000000: FF 0B     dec [ ebx ]", 
              &[0xFF, 0x0B]),
 
-            ("00000000: FF 40 30     inc [ eax + 0x30 ]", 
-             &[0xFF, 0x40, 0x30]),
-
-            ("00000000: FF 40 30    inc [ eax + 0x30 ]", 
+            ("00000000: FF 40 30     inc [ eax + 0x00000030 ]", 
              &[0xFF, 0x40, 0x30]),
 
             ("00000000: FF B6 DD CC BB AA     push [ esi + 0xAABBCCDD ]", 
              &[0xFF, 0xB6, 0xDD, 0xCC, 0xBB, 0xAA]),
 
-            ("00000000: FF84 03 DD CC BB AA     inc [ eax + ebx + 0xAABBCCDD ]", 
+            ("00000000: FF 84 03 DD CC BB AA     inc [ eax + ebx + 0xAABBCCDD ]", 
              &[0xFF, 0x84, 0x03, 0xDD, 0xCC, 0xBB, 0xAA]),
 
             ("00000000: FF 34 35 DD CC BB AA     push [ esi + 0xAABBCCDD ]", 

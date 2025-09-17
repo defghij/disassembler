@@ -9,4 +9,4 @@ description = "A simple disassembler for EN.695.744"
 serde = { version = "1.0.219", features = [ "derive" ] }
 clap  = { version = "4.5.47" }
 phf   = { version = "0.13.1", features = ["macros"] }
-bitmask-enum = { version = "2.2.5" }
+bon   = { version = "3.7.2" }
