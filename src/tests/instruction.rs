@@ -28,7 +28,7 @@ pub mod compendium {
             println!("Attempting Decode using rule: {rule:?}");
             println!("----------------------------------------");
 
-            let (length, _fixed) = rule.len();
+            let (mut length, _fixed) = rule.len();
             let requires_modrm = rule.modrm_required();
             println!("rule reported modrm required: {requires_modrm}");
 
@@ -38,24 +38,19 @@ pub mod compendium {
                 let Some(modrm) = rule.modrm_byte(bytes[modrm_location]) else { continue };
                 println!("Got ModRM Byte: {modrm:?}");
 
-                if modrm.precedes_sib_byte() { 
-                    let sib_location = modrm_location + 1;   
-                    let Ok(sib) = Sib::try_from(bytes[sib_location])
-                        else { 
-                            println!("Invalid SIB from byte: 0x{:02X}", bytes[sib_location]);
-                            continue 
-                        };
+                let (len, is_final)= modrm.bytes_remaining();
+                length += len;
 
-                    println!("Got SIB Byte: {sib:?}");
-
-                    unimplemented!("SIB byte processing not implemented");
+                // Case where ModRM does not relay enough information to determine the
+                // instruction length.
+                if modrm.precedes_sib_byte() && !is_final {
+                    let Ok(sib) = Sib::try_from(bytes[modrm_location+1]) else { continue };
+                    length += sib.bytes_remaining();
                 }
 
-                let bytes_remaining = modrm.bytes_remaining();
                 println!("ModRM: {modrm:?},  0x{:02X}", modrm.as_byte());
-                println!("reported total instruction bytes: {length} + {bytes_remaining} = {}", length + bytes_remaining); 
 
-                let prospective_bytes = bytes.get(0.. length + bytes_remaining)
+                let prospective_bytes = bytes.get(0.. length)
                         .expect("Test should have enough bytes for decoding instruction");
 
                 let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());

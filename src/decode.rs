@@ -247,7 +247,22 @@ impl Bytes {
                 match modrm.0 {
                     ModBits::OO => {
                         match modrm.2 {
-                            0b100 => { unimplemented!("SIB byte not implemented for this address mode") },
+                            0b100 => { // [--][--]
+                                println!("length: {}", bytes.len());
+                                let base: usize = opcode_length + 1 + 1 /*modrm + sib*/;
+                                let Some(sib) = bytes.get(base - 1) 
+                                    else { return Err(DecodeError::InvalidLength) };
+                                 
+                                let sib = Sib::try_from(*sib)?;
+
+                                let Some(displacement) = bytes.get(base..base + 4) 
+                                    else { return Err(DecodeError::InvalidLength) };
+                                let displacement = Displacement::try_from(displacement)?;
+
+                                let eaddr = EffectiveAddress::from(modrm, sib, Some(displacement))?;
+
+                                instruction.add(Operand::EffectiveAddress(eaddr));
+                            },
                             0b101 => { 
                                 let base: usize = opcode_length + 1/*modrm byte*/;
 
@@ -281,7 +296,9 @@ impl Bytes {
                     },
                     ModBits::OI => {
                         match modrm.2 {
-                            0b100 => { unimplemented!("SIB byte not implemented for this address mode") },
+                            0b100 => { // [--][--]+disp8
+                                unimplemented!("SIB byte not implemented for this address mode") 
+                            },
                             _ => { 
                                 let base: usize = opcode_length + 1/*modrm byte*/;
 
@@ -296,16 +313,28 @@ impl Bytes {
 
                                 let displacement = EffectiveAddress::base_d8(modrm.1, displacement[0]);
 
-                                //let displacement = Displacement::from_double_absolute(&displacement);
                                 instruction.add(Operand::EffectiveAddress(displacement));
-                                //unimplemented!("Need to implement EffectiveAddress output for [ disp32 ] first");
                             },
                         }
 
                     },
                     ModBits::IO => {
                         match modrm.2 {
-                            0b100 => { unimplemented!("SIB byte not implemented for this address mode") },
+                            0b100 => { // [--][--]+disp32
+                                let base: usize = opcode_length + 1 + 1 /*modrm + sib*/;
+                                let Some(sib) = bytes.get(base - 1) 
+                                    else { return Err(DecodeError::InvalidLength) };
+                                 
+                                let sib = Sib::try_from(*sib)?;
+
+                                let Some(displacement) = bytes.get(base..base + 4) 
+                                    else { return Err(DecodeError::InvalidLength) };
+                                let displacement = Displacement::try_from(displacement)?;
+
+                                let eaddr = EffectiveAddress::from(modrm, sib, Some(displacement))?;
+
+                                instruction.add(Operand::EffectiveAddress(eaddr));
+                            },
                             _ => { 
                                 let base: usize = opcode_length + 1/*modrm byte*/;
                                 let displacement_width: usize = 4;
@@ -316,15 +345,15 @@ impl Bytes {
 
                                 let displacement: &[u8] = bytes.get(base..base+4).expect("Length bounds should be correct due to assert");
 
-                                let Ok(displacement) = <[u8;4]>::try_from(displacement) 
-                                else { return Err(DecodeError::DecodeFailure); };
+                                let displacement = <[u8;4]>::try_from(displacement)
+                                    .map_err(|_| DecodeError::InvalidLength)?;
 
                                 // Is this the right thing? Endianess hurts my brain...
                                 let displacement = u32::from_le_bytes(displacement);
 
-                                let displacement = EffectiveAddress::base_d32(modrm.1, displacement);
+                                let eaddr = EffectiveAddress::base_d32(modrm.1, displacement);
 
-                                instruction.add(Operand::EffectiveAddress(displacement));
+                                instruction.add(Operand::EffectiveAddress(eaddr));
                             },
                         }
                     },

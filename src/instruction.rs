@@ -228,32 +228,34 @@ pub mod encoding {
 
         pub fn as_byte(&self) -> u8 { let byte: u8 = self.into(); byte }
 
-        /// Uses the [ModRM] byte to estimate the number of bytes that remain (after
+        /// Uses the [ModRM] byte to estimate the number of bytes that _remain_ (after
         /// this [ModRM] byte) in the instruction that this byte may reside in and encode. This
         /// information is derived from Table 2-2 of the Intel Intel64 and IA-32 Arch Manual
         ///
-        /// This function does not include lengths of [Sib] byte derived operands.
+        /// This function does not include lengths that require [Sib] information. If such a case
+        /// is encountered then `Self.1` will be false. If `Self.1` is `true`, then returned
+        /// remaining bytes is accurate.
         ///
-        /// Example: a byte value of `0xF1`, then this function would return $0$ which does not
-        /// include the [ModRM] byte and there are no other bytes in the instruction decode
-        pub fn bytes_remaining(&self) -> usize {
+        /// Example: a byte value of `0xF1`, then this function would return `(0, true)` which does 
+        /// not include the [ModRM] byte and there are no other bytes in the instruction decode
+        pub fn bytes_remaining(&self) -> (usize, bool) {
             let byte: u8 = self.into();
             println!("MODRM byte: 0x{byte:02X}");
             let remaining = match byte {
                 0x00 ..= 0x3F => {
-                    if self.2 == 0b101 { 4 } else
-                    if self.2 == 0b100 { unimplemented!("SIB byte length not implemented") } 
-                    else { 0 }
+                    if self.2 == 0b101 { (4 /*disp32*/, true) } else
+                    if self.2 == 0b100 { (1 /*SIB byte*/, false /*need SIB info*/) } 
+                    else { (0, true) }
                 },
                 0x40 ..= 0x7F => {
-                    if self.2 == 0b100 { unimplemented!("SIB byte length not implemented") } 
-                    else { 1 }
+                    if self.2 == 0b100 { (1 + 1 /*SIB Byte + disp8*/, true) } 
+                    else { (1, true) }
                 },
                 0x80 ..= 0xBF => {
-                    if self.2 == 0b100 { unimplemented!("SIB byte length not implemented") } 
-                    else { 4 }
+                    if self.2 == 0b100 { (1 + 4 /*SIB Byte + disp32*/, true)} 
+                    else { (4, true) }
                 },
-                0xC0 ..= 0xFF => { 0 }
+                0xC0 ..= 0xFF => { (0, true) }
             }; 
             remaining
         }
@@ -313,7 +315,10 @@ pub mod encoding {
         Register
     ); 
     impl Sib {
-        pub const fn _len() -> usize { 1 }
+        pub fn bytes_remaining(&self) -> usize {
+            unimplemented!("Length inspection not implemented for SIB");
+        }
+
     }
     impl TryFrom<u8> for Sib {
         type Error = DecodeError;
@@ -337,7 +342,6 @@ pub mod encoding {
     pub mod operands {
         use super::*;
 
-
         /// Structure for use in [Operand] for capturing the structure of the operand so it can be
         /// transformed into a string for printing and displaying.
         #[derive(Clone, Debug, PartialEq)]
@@ -346,18 +350,63 @@ pub mod encoding {
             Register { reg: Register },
 
             /// [index*scale + disp32]
-            IndexDisplacement { index: Register, scale: Scale, displacement: u32 },
+            IndexDisp { index: Register, scale: Scale, displacement: u32 },
 
             /// [disp32] 
             Displacement { displacement: u32 },
 
             /// [base + disp?]
-            Base { base: Register, displacement: Displacement },
+            BaseDisp { base: Register, displacement: Displacement },
 
-            /// [base + index*scale + disp?]
-            BaseIndex { base: Register, index: Register, scale: Scale, displacement: Displacement },
+            /// [index*scale + base + disp?]
+            IndexBaseDisp { index: Register, scale: Scale, base: Register, displacement: Displacement },
         }
+        #[allow(unused)]
         impl EffectiveAddress {
+            
+            pub fn from(modrm: ModRM, sib: Sib, displacement: Option<Displacement>) -> Result<EffectiveAddress, DecodeError> {
+                println!("MODRM: {modrm:?}\nSIB: {:?}", sib.clone());
+                let scale = sib.0;
+                let index = sib.1;
+                let base = sib.2;
+                let addr_mode = modrm.0;
+                
+                let ea = if addr_mode == ModBits::OO { // [index*scale + disp]
+                    let Some(displacement) = displacement 
+                        else {
+                            return Err(DecodeError::InvalidDisplacementByteWidth) 
+                        };
+                    EffectiveAddress::IndexDisp { 
+                        index, 
+                        scale,
+                        displacement: displacement.get_inner() 
+                    }
+                } else {
+                    if scale == Scale::One {  // [index*1 + base]
+                        EffectiveAddress::IndexBaseDisp {
+                            index,
+                            scale,
+                            base,
+                            displacement: displacement.unwrap_or_default(),
+                        }
+                    }
+                    else { // [index*scale + base + disp]
+                        let Some(displacement) = displacement 
+                            else { 
+                                return Err(DecodeError::InvalidDisplacementByteWidth) 
+                            };
+                        EffectiveAddress::IndexBaseDisp { 
+                            index, 
+                            scale,
+                            base,
+                            displacement
+                        }
+                    }
+                };
+
+                Ok(ea)
+            }
+
              /// reg
             pub fn register(reg: Register) -> EffectiveAddress { 
                 EffectiveAddress::Register { reg }
@@ -370,32 +419,37 @@ pub mod encoding {
 
             /// [base]
             pub fn base(base: Register) -> EffectiveAddress {
-                EffectiveAddress::Base { base, displacement: Displacement::None }
+                EffectiveAddress::BaseDisp { base, displacement: Displacement::None }
             }
 
             /// [base + disp8]
             pub fn base_d8(base: Register, displacement: u8) -> EffectiveAddress {
-                EffectiveAddress::Base { base, displacement: Displacement::Abs8(displacement) }
+                EffectiveAddress::BaseDisp { base, displacement: Displacement::Abs8(displacement) }
             }
 
             /// [base + disp32]
             pub fn base_d32(base: Register, displacement: u32) -> EffectiveAddress {
-                EffectiveAddress::Base { base, displacement: Displacement::Abs32(displacement) }
+                EffectiveAddress::BaseDisp { base, displacement: Displacement::Abs32(displacement) }
             }
 
-            /// [base + index*scale + disp8]
-            pub fn base_index_d8(base: Register, index: Register, scale:Scale, displacement: u8) -> EffectiveAddress {
-                EffectiveAddress::BaseIndex{ base, index, scale, displacement: Displacement::Abs8(displacement) }
+            /// [index*scale + base]
+            pub fn index_base(index: Register, scale:Scale, base: Register) -> EffectiveAddress {
+                EffectiveAddress::IndexBaseDisp{ index, scale, base, displacement: Displacement::None}
             }
 
-            /// [base + index*scale + disp32]
-            pub fn base_index_d32(base: Register, index: Register, scale:Scale, displacement: u32) -> EffectiveAddress {
-                EffectiveAddress::BaseIndex{ base, index, scale, displacement: Displacement::Abs32(displacement) }
+            /// [index*scale + base + disp8]
+            pub fn index_base_d8(index: Register, scale:Scale, base: Register, displacement: u8) -> EffectiveAddress {
+                EffectiveAddress::IndexBaseDisp { index, scale, base, displacement: Displacement::Abs8(displacement) }
+            }
+
+            /// [index*scale + base + disp32]
+            pub fn index_base_d32(index: Register, scale:Scale, base: Register, displacement: u32) -> EffectiveAddress {
+                EffectiveAddress::IndexBaseDisp { index, scale, base, displacement: Displacement::Abs32(displacement) }
             }
 
             /// [index*scale + disp32]
             pub fn index_d32(index: Register, scale:Scale, displacement: u32) -> EffectiveAddress {
-                EffectiveAddress::IndexDisplacement { index, scale, displacement }
+                EffectiveAddress::IndexDisp { index, scale, displacement }
             }
         }
         impl Display for EffectiveAddress {
@@ -418,22 +472,48 @@ pub mod encoding {
                     Displacement { displacement } => {
                         write!(f, "[ 0x{:08X} ]", displacement)
                     },
-                    IndexDisplacement { index, scale, displacement } => {
-                        write!(f, "[ {} * {} + 0x{:08X} ]", index, scale, displacement)
+                    IndexDisp { index, scale, displacement } => {
+                        match scale {
+                            Scale::One => {
+                                write!(f, "[ {} + 0x{:08X} ]", index, displacement)
+                            },
+                            _=> {
+                                write!(f, "[ {} * {} + 0x{:08X} ]", index, scale, displacement)
+                            }
+                        }
                     }
-
-                    Base { base, displacement} => {
+                    BaseDisp { base, displacement} => {
                         match displacement {
                             operands::Displacement::None => { write!(f, "[ {} ]", base) }
                             _ => { write!(f, "[ {} + 0x{:08X} ]", base, displacement.get_inner()) }
                         }
                     }
-
-                    BaseIndex { base, index, scale, displacement } => {
-                        write!(f, "[ {index} * {scale} + {base} + 0x{:08X} ]", displacement.get_inner())
+                    IndexBaseDisp { index, scale, base, displacement } => {
+                        // This is pretty gross......... ewww.
+                        match displacement {
+                            operands::Displacement::None => {
+                                match scale {
+                                    Scale::One => {
+                                        write!(f, "[ {index} + {base} ]")
+                                    },
+                                    _ => {
+                                        write!(f, "[ {index} * {scale} + {base} ]")
+                                    }
+                                }
+                            },
+                            _ => { 
+                                match scale {
+                                    Scale::One => {
+                                        write!(f, "[ {index} + {base} + 0x{:08X} ]", displacement.get_inner())
+                                    },
+                                    _ => {
+                                        write!(f, "[ {index} * {scale} + {base} + 0x{:08X} ]", displacement.get_inner())
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-
             }
         }
 
@@ -543,7 +623,10 @@ pub mod encoding {
                     5 => Ok(Register::EBP),
                     6 => Ok(Register::ESI),
                     7 => Ok(Register::EDI),
-                    _ => Err(DecodeError::InvalidRegister),
+                    _ => {
+                        println!("Failed u8 to Register transform");
+                        Err(DecodeError::InvalidRegister)
+                    },
                 }
             }
         }
@@ -681,6 +764,11 @@ pub mod encoding {
                 println!("displacement: {displacement:X}");
                 let target = displacement + base;
                 Displacement::Rel32(target)
+            }
+        }
+        impl Default for Displacement {
+            fn default() -> Self {
+                Displacement::None
             }
         }
         impl From<&Displacement> for u32 {
