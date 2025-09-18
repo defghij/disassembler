@@ -150,7 +150,7 @@ pub mod memory {
 
 pub mod encoding {
     use super::*;
-    use operands::Register;
+    use operands::{Register, Scale};
 
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -300,58 +300,37 @@ pub mod encoding {
     }
 
     #[allow(unused)]
-    #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+    #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct Sib (
         /// Scale
         // Only low two bits are valid
-        u8,
+        Scale,
         /// Index
         // Only low three bits are valid
-        u8,
+        Register,
         /// Base
         // Only low three bits are valid
-        u8
+        Register
     ); 
     impl Sib {
         pub const fn _len() -> usize { 1 }
-
-        /// Returns the format str that can be used to print an instruction. 
-        fn _format_string(&self, modrm: ModRM) -> &str {
-            let special_case = self.2 == 0b101 && modrm.0 != ModBits::II;
-            match self.0 {
-                0b00 => { "[ {} + {}]" },
-                0b01 => { 
-                    if special_case {        // [ indexreg*2 + displacement ] 
-                        "[ {}*2 + {} ]"      
-                    } else {                 // [ indexreg*2 + basereg + displacement]
-                        "[ {}*2 + {} + {} ]"
-                    }
-                },
-                0b10 => { 
-                    if special_case {        // [ indexreg*4 + displacement ] 
-                        " [ {}*4 + {} ]"
-                    } else {                 // [ indexreg*4 + basereg + displacement ]
-                        "[ {}*4 + {} + {} ]"
-                    }
-                },
-                0b11 => { 
-                    if special_case {        // [ indexreg*8 + displacement ]
-                        "[ {}*8 + {}]"
-                    } else {                 // [ indexreg*8 + basereg + displacement ]
-                        "[ {}*8 + {} + {} ]"
-                    }
-                },
-                _ => unreachable!("This should never happen")
-            }
-        }
     }
-    impl From<u8> for Sib {
-        fn from(value: u8) -> Self {
-            Self (
-                (value & 0b11000000) >> 6,
-                (value & 0b00111000) >> 3,
-                (value & 0b00000111) >> 0,
-            )
+    impl TryFrom<u8> for Sib {
+        type Error = DecodeError;
+
+        fn try_from(value: u8) -> Result<Self, Self::Error> {
+            let scale = Scale::try_from(   (value & 0b11000000) >> 6)?;
+            let index = Register::try_from((value & 0b00111000) >> 3)?;
+            let base  = Register::try_from((value & 0b00000111) >> 0)?;
+
+            // According to Table 2-3, there is no valid sib byte with an
+            // Index of 0b100 (ESP register)
+            if index == Register::ESP {
+                println!("Rejecting potential SIB byte");
+                return Err(DecodeError::InvalidSib);
+            }
+
+            Ok(Self (scale, index, base))
         }
     }
 
@@ -458,10 +437,26 @@ pub mod encoding {
             }
         }
 
-        #[derive(Clone, Debug, PartialEq)]
+        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
         pub enum Scale { 
-            One = 1, Two = 2, 
-            Four = 4, Eight = 8
+            One = 0, Two = 1, 
+            Four = 2, Eight = 3
+        }
+        impl TryFrom<u8> for Scale {
+            type Error = DecodeError;
+
+            fn try_from(value: u8) -> Result<Self, Self::Error> {
+                match value {
+                    0 => Ok(Scale::One),
+                    1 => Ok(Scale::Two),
+                    2 => Ok(Scale::Four),
+                    3 => Ok(Scale::Eight),
+                    _ => {
+                        println!("Rejecting u8 --> Scale transform");
+                        Err(DecodeError::InvalidSib)
+                    },
+                }
+            }
         }
         impl Display for Scale {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -607,25 +602,55 @@ pub mod encoding {
             /// as seen on disk or in a file
             #[allow(unused)]
             pub fn len(&self) -> usize {
+                use Displacement::*;
                 match self {
-                    Displacement::None => 0,
-                    Displacement::Rel8(_)  | Displacement::Abs8(_)  => 1,
-                    Displacement::Rel16(_) | Displacement::Abs16(_) => 2,
-                    Displacement::Rel32(_) | Displacement::Abs32(_) => 4,
+                    None => 0,
+                    Rel8(_)  | Abs8(_)  => 1,
+                    Rel16(_) | Abs16(_) => 2,
+                    Rel32(_) | Abs32(_) => 4,
                 }
             }
 
             /// Returns a u32 of the inner integer. Note this may be upcast 
             /// to [u32].
             pub fn get_inner(&self) -> u32 {
+                use Displacement::*;
                 match self {
-                    Displacement::None     => 0,
-                    Displacement::Rel8(d)  => *d as u32,
-                    Displacement::Rel16(d) => *d as u32,
-                    Displacement::Rel32(d) => *d,
-                    Displacement::Abs8(d)  => *d as u32,
-                    Displacement::Abs16(d) => *d as u32,
-                    Displacement::Abs32(d) => *d,
+                    None     => 0,
+                    Rel8(d)  => *d as u32,
+                    Rel16(d) => *d as u32,
+                    Rel32(d) => *d,
+                    Abs8(d)  => *d as u32,
+                    Abs16(d) => *d as u32,
+                    Abs32(d) => *d,
+                }
+            }
+
+            pub fn abs_to_rel(&self, address: Offset, length: usize) -> Result<Displacement, DecodeError> {
+                use Displacement::*;
+
+                let base = address.0 + length as u32; //+ operand.len() as u32;
+
+                match self {
+                    None     =>  Err(DecodeError::InvalidDisplacementByteWidth),
+                    Rel8(d)  =>  Ok(Rel8( *d)),
+                    Rel16(d) =>  Ok(Rel16(*d)),
+                    Rel32(d) =>  Ok(Rel32(*d)),
+                    Abs8(d) => {
+                        let base = base as u8 + 1 /*byte*/;
+                        let target = d + base;
+                        Ok(Rel8(target))
+                    },
+                    Abs16(d) => {
+                        let base = base as u16 + 2 /*bytes*/;
+                        let target = d + base;
+                        Ok(Rel16(target))
+                    },
+                    Abs32(d) => {
+                        let base = base as u32 + 4 /*bytes*/;
+                        let target = d + base;
+                        Ok(Rel32(target))
+                    }
                 }
             }
 
@@ -660,6 +685,33 @@ pub mod encoding {
         }
         impl From<&Displacement> for u32 {
             fn from(value: &Displacement) -> Self { value.get_inner() }
+        }
+        impl TryFrom<&[u8]> for Displacement {
+            type Error = DecodeError;
+
+            fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+                let displacement = match value.len() {
+                    1 => { Displacement::Rel8(value[0]) },
+                    2 => {
+                        let Ok(displacement) = <[u8;2]>::try_from(value) 
+                        else { return Err(DecodeError::DecodeFailure); };
+
+                        // Is this the right thing? Endianess hurts my brain...
+                        let displacement = u16::from_le_bytes(displacement);
+                        Displacement::Abs16(displacement)
+                    },
+                    4 => {
+                        let Ok(displacement) = <[u8;4]>::try_from(value) 
+                        else { return Err(DecodeError::DecodeFailure); };
+
+                        // Is this the right thing? Endianess hurts my brain...
+                        let displacement = u32::from_le_bytes(displacement);
+                        Displacement::Abs32(displacement)
+                    },
+                    _ => { return Err(DecodeError::InvalidLength); }
+                };
+                Ok(displacement)
+            }
         }
         impl Display for Displacement {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

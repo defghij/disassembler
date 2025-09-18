@@ -1,6 +1,7 @@
  //This contains tests from the course 
 #[cfg(test)]
 pub mod compendium {
+    use crate::instruction::encoding::Sib;
     #[allow(unused)]
     use crate::{
         decode::{
@@ -33,10 +34,22 @@ pub mod compendium {
 
             let instruction = if requires_modrm { // We must decode bytes beyond the first to determine length
 
-                let Some(modrm) = rule.modrm_byte(bytes[1]) else { continue };
-                println!("Got ModRM Byte");
+                let modrm_location = rule.op_code().len();
+                let Some(modrm) = rule.modrm_byte(bytes[modrm_location]) else { continue };
+                println!("Got ModRM Byte: {modrm:?}");
 
-                if modrm.precedes_sib_byte() { unimplemented!("SIB byte processing not implemented"); }
+                if modrm.precedes_sib_byte() { 
+                    let sib_location = modrm_location + 1;   
+                    let Ok(sib) = Sib::try_from(bytes[sib_location])
+                        else { 
+                            println!("Invalid SIB from byte: 0x{:02X}", bytes[sib_location]);
+                            continue 
+                        };
+
+                    println!("Got SIB Byte: {sib:?}");
+
+                    unimplemented!("SIB byte processing not implemented");
+                }
 
                 let bytes_remaining = modrm.bytes_remaining();
                 println!("ModRM: {modrm:?},  0x{:02X}", modrm.as_byte());
@@ -48,7 +61,7 @@ pub mod compendium {
                 let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
 
                 let instruction = if decode_attempt.is_ok() { decode_attempt.expect("Ok due to conditional") }
-                else { continue };
+                    else { continue };
                 
                 instruction
             } 
@@ -64,7 +77,7 @@ pub mod compendium {
                 let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
 
                 let instruction = if decode_attempt.is_ok() { decode_attempt.expect("Ok due to conditional") }
-                else { continue };
+                    else { continue };
 
                 instruction
             };

@@ -25,6 +25,7 @@ pub enum DecodeError {
     NoBytesPresent,
     UnknownOpcode,
     InvalidModRM,
+    InvalidSib,
     InvalidLength,
     InvalidAddressingMode,
     InvalidOpCodeExtension,
