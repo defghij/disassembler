@@ -106,6 +106,12 @@ impl Output {
         Ok(())
     }
 }
+impl From<Vec<u8>> for Output 
+{
+    fn from(bytes: Vec<u8>) -> Self {
+        todo!()
+    }
+}
 impl Display for Output {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let width = self.width;
