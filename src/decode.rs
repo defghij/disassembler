@@ -96,55 +96,63 @@ impl Bytes {
         self.raw_bytes().len()
     }
 
-
     pub fn from(location: Offset, bytes: &[u8], rule: DecodeRule) -> Result<Bytes, DecodeError> {
         if bytes.len() == 0 { return Err(DecodeError::NoBytesPresent); }
         let invalid = Bytes::Uknown(bytes[0]);
 
         let (mnemonic, prefix, op_code, extensions, op_encode, addr_modes) = rule.separate();
 
-        let byte = bytes[0];
         let opcode: u8 = op_code.0[0];
-        let (instruction_length, fixed) = rule.len();
+        let instruction_length = bytes.len();
         let opcode_length = rule.op_code().len();
+
+        // Validate ModRM characteristics if we require one.
+        if rule.modrm_required() && instruction_length == 1 { return Err(DecodeError::DecodeFailure); }
+        let modrm = if rule.modrm_required() {
+            let modrm = rule.modrm_byte(bytes[opcode_length])?;
+            rule.validate_addressing_mode(modrm)?;
+            Some(modrm)
+        } else { None };
+
         let mut instruction = Instruction::new(mnemonic);
 
-        match op_encode {
+        let instruction = match op_encode {
             OpEn::O  => {
-
                 // All Single byte OpEn::O instructions _should have one and only one extension
                 // "/rd"
                 if extensions.is_some_and(|ext| ext.len() ==1 && ext[0] == Extension::RD) { 
-                    let reg_value = byte - opcode;
-
-                    let Ok(register) = Register::try_from(reg_value)
-                    else { return Err(DecodeError::InvalidRegister); };
+                    let byte = bytes[0];
+                    let register = Register::try_from(byte - opcode)?;
 
                     instruction.add(Operand::Register(register));
 
-                    Ok(Bytes::Decoded {
+                    Bytes::Decoded {
                         bytes: vec![byte],
                         instruction: instruction.clone()
-                    })
-
+                    }
                 }
-                else { Err(DecodeError::DecodeFailure) }
+                else { return Err(DecodeError::DecodeFailure); }
             },
             OpEn::ZO => {
                 if extensions.is_none() { 
-                    Ok(Bytes::Decoded {
+                    Bytes::Decoded {
                         bytes: vec![bytes[0]],
                         instruction: instruction.clone()
-                    })
+                    }
                 }
                 else { return Err(DecodeError::InvalidOpCodeExtension); } 
             },
             OpEn::I  => {
                 // Validate instruction assumptions.
-                if op_code.len() != 1   { return Err(DecodeError::InvalidOpCodeLength); }
-                if extensions.is_none() { return Err(DecodeError::InvalidOpCodeExtension); }
-                let extensions = extensions.unwrap();
-                if extensions.len() != 1 { return Err(DecodeError::InvalidOpCodeExtension); }
+                if op_code.len() != 1   { 
+                    error!("OpCode length incorrect"); 
+                    return Err(DecodeError::InvalidOpCodeLength);
+                }
+                if !extensions.as_ref().is_some_and(|exts| exts.len() == 1) { 
+                    error!("Incorrect number of OpCode Extensions");
+                    return Err(DecodeError::InvalidOpCodeExtension); 
+                }
+                let extensions = extensions.expect("Is some due to conditional above");
 
                 if rule.implicit_operand().is_some() {
                     let register = rule.implicit_operand().unwrap();
@@ -152,7 +160,7 @@ impl Bytes {
                 }
 
                 if extensions.contains(&Extension::IB) { 
-                    let imm = Immediate::Imm8(bytes[1..2].to_vec());
+                    let imm = Immediate::Imm8(bytes[1.. 2].to_vec());
                     instruction.add(Operand::Immediate(imm));
                 }
 
@@ -165,40 +173,23 @@ impl Bytes {
                     instruction.add(Operand::Immediate(imm));
                 }
 
-                Ok(Bytes::Decoded {
-                    bytes: bytes.to_vec(),
+                Bytes::Decoded {
+                    bytes: bytes[0..instruction_length].to_vec(),
                     instruction: instruction.clone()
-                })
+                }
             }
             OpEn::D  => {
-                let displacement_length = instruction_length - opcode_length;
+                let width = instruction_length - opcode_length;
+                debug!("Displacement Byte Width: {width}");
 
-                let range = (opcode_length.. opcode_length + displacement_length);
+                let displacement = Displacement::from_relative(bytes, location, opcode_length, width)?;
 
-                let displacement_bytes = bytes.get(range).expect("Displacement range should be correct");
-
-                let displacement = match displacement_length {
-                    1 => {
-                        let operands = <[u8;1]>::try_from(displacement_bytes).expect("Displacement length calculation should be correct");
-                        Displacement::from_byte_relative(location,opcode_length, &operands)
-                    },
-                    2 => {
-                        let operands = <[u8;2]>::try_from(displacement_bytes).expect("Displacement length calculation should be correct");
-                        Displacement::from_word_relative(location,opcode_length, &operands)
-                    }, 
-                    4 => {
-                        let operands = <[u8;4]>::try_from(displacement_bytes).expect("Displacement length calculation should be correct");
-                        debug!("Operands: {}", operands.iter().map(|b| format!("{b:X}")).collect::<Vec<String>>().join(" "));
-                        Displacement::from_double_relative(location,opcode_length, &operands)
-                    },
-                    _ => return Err(DecodeError::InvalidDisplacementByteWidth),
-                };
                 instruction.add(Operand::Displacement(displacement));
 
-                Ok(Bytes::Decoded {
-                    bytes: bytes.to_vec(),
+                Bytes::Decoded {
+                    bytes: bytes[0..instruction_length].to_vec(),
                     instruction: instruction.clone(),
-                })
+                }
             }
             OpEn::OI => {
                 let Some(extensions) = extensions 
@@ -208,13 +199,7 @@ impl Bytes {
                 };
 
                 if extensions.contains(&Extension::RD) {
-                    let reg_value = byte - opcode;
-
-                    let Ok(register) = Register::try_from(reg_value)
-                        else { 
-                            error!("Opcde and Byte should be within the register range");
-                            return Err(DecodeError::InvalidRegister);
-                        };
+                    let register = Register::try_from(bytes[0] - opcode)?;
 
                     instruction.add(Operand::Register(register));
                 }
@@ -225,7 +210,8 @@ impl Bytes {
                 }
 
                 if extensions.contains(&Extension::IW) { 
-                    unimplemented!("Opcode Extension for immediate word is not implemented")
+                    error!("Opcode Extension for immediate word is not implemented");
+                    return Err(DecodeError::InvalidOpCodeExtension);
                 }
 
                 if extensions.contains(&Extension::ID) { 
@@ -233,13 +219,14 @@ impl Bytes {
                     instruction.add(Operand::Immediate(imm));
                 }
 
-                Ok(Bytes::Decoded {
-                    bytes: bytes.to_vec(),
+                Bytes::Decoded {
+                    bytes: bytes[..instruction_length].to_vec(),
                     instruction: instruction.clone()
-                })
+                }
             }
             OpEn::M => { 
-                if rule.modrm_required() && instruction_length == 1 { return Err(DecodeError::DecodeFailure); }
+                let modrm = modrm.expect("ModRM should already be validated");
+                
 
                 // All declared OpEn::M `DecodeRules` have an extension.
                 let Some(extensions) = extensions 
@@ -249,22 +236,10 @@ impl Bytes {
                 };
 
 
-                let Some(modrm) = rule.modrm_byte(bytes[opcode_length])
-                else { 
-                    error!("Unable to decode a valid MODRM from bytes");
-                    return Err(DecodeError::InvalidModRM); 
-                };
-                    
-                if !addr_modes.is_some_and(|a| a.0.contains(&modrm.0.into())) { 
-                    error!("Encountered invalid addressing mode: {:?}", modrm.0);
-                    return Err(DecodeError::InvalidAddressingMode); 
-                }
-
                 match modrm.0 {
                     ModBits::OO => {
                         match modrm.2 {
                             0b100 => { // [--][--]
-                                debug!("length: {}", bytes.len());
                                 let base: usize = opcode_length + 1 + 1 /*modrm + sib*/;
 
                                 let sib = Sib::sib(bytes, base)?;
@@ -301,20 +276,15 @@ impl Bytes {
                             _ => { 
                                 let base: usize = opcode_length + 1/*modrm byte*/;
 
-                                if bytes.len() < base + 1 { 
-                                    error!("Byte length, {}, incorrect for instruction", bytes.len()); 
+                                if bytes.len() < base + 1 /*displacement*/ { 
+                                    error!("Byte length incorrect for instruction"); 
                                     return Err(DecodeError::InvalidLength); 
                                 }
 
-                                let displacement: &[u8] = bytes.get(base..base+1).expect("Length bounds should be correct due to assert");
+                                let d = Displacement::disp8(bytes, base)?;
+                                let d: u32 = d.into();
 
-                                let Ok(displacement) = <[u8;1]>::try_from(displacement) 
-                                else { 
-                                    error!("Bytes to Displacement tranformation failed");
-                                    return Err(DecodeError::DecodeFailure);
-                                };
-
-                                let displacement = EffectiveAddress::base_d8(modrm.1, displacement[0]);
+                                let displacement = EffectiveAddress::base_d8(modrm.1, d as u8);
 
                                 instruction.add(Operand::EffectiveAddress(displacement));
                             },
@@ -325,20 +295,10 @@ impl Bytes {
                         match modrm.2 {
                             0b100 => { // [--][--]+disp32
                                 let base: usize = opcode_length + 1 + 1 /*modrm + sib*/;
-                                let Some(sib) = bytes.get(base - 1) 
-                                    else { 
-                                        error!("Byte length incorrect for obtaining SIB");
-                                        return Err(DecodeError::InvalidLength) 
-                                    };
                                  
-                                let sib = Sib::try_from(*sib)?;
+                                let sib = Sib::sib(bytes, base)?;
 
-                                let Some(displacement) = bytes.get(base..base + 4) 
-                                    else { 
-                                        error!("Byte length incorrect for obtaining Displacement");
-                                        return Err(DecodeError::InvalidLength)
-                                    };
-                                let displacement = Displacement::try_from(displacement)?;
+                                let displacement = Displacement::disp32(bytes, base)?;
 
                                 let eaddr = EffectiveAddress::from(modrm, sib, Some(displacement))?;
 
@@ -346,44 +306,27 @@ impl Bytes {
                             },
                             _ => { 
                                 let base: usize = opcode_length + 1/*modrm byte*/;
-                                let displacement_width: usize = 4;
 
-                                // This should probably really be a panic as it means a fundamental
-                                // flaw in parsing logic.
                                 if bytes.len() < base + 4 { return Err(DecodeError::InvalidLength); }
 
-                                let displacement: &[u8] = bytes.get(base..base+4).expect("Length bounds should be correct due to assert");
+                                let displacement = Displacement::disp32(bytes, base)?;
 
-                                let Ok(displacement) = <[u8;4]>::try_from(displacement)
-                                    else {
-                                        error!("Invalid byte length when attempting to grab Displacement");
-                                        return Err(DecodeError::InvalidLength);
-                                    };
-
-                                // Is this the right thing? Endianess hurts my brain...
-                                let displacement = u32::from_le_bytes(displacement);
-
-                                let eaddr = EffectiveAddress::base_d32(modrm.1, displacement);
+                                let eaddr = EffectiveAddress::base_d32(modrm.1, displacement.into());
 
                                 instruction.add(Operand::EffectiveAddress(eaddr));
                             },
                         }
                     },
                     ModBits::II => {
-                        let Ok(register) = Register::try_from(modrm.2)
-                        else { 
-                            error!("Attempted to instantiate an invalid Register from bytes: {}", modrm.2);
-                            return Err(DecodeError::InvalidRegister);
-                        };
-
+                        let register = Register::try_from(modrm.2)?;
                         instruction.add(Operand::Register(register));
                     }
                 }
 
-                Ok(Bytes::Decoded {
+                Bytes::Decoded {
                     bytes: bytes.to_vec(),
                     instruction: instruction.clone()
-                })
+                }
             },
             OpEn::RM => todo!(),
             OpEn::MR => todo!(),
@@ -391,8 +334,9 @@ impl Bytes {
             OpEn::NP => todo!(),
             OpEn::FD => todo!(),
             OpEn::TD => todo!(),
-        }
+        };
 
+        Ok(instruction)
     }
 
     pub fn operands(&self) -> Option<Vec<String>> { unimplemented!("lol"); }
@@ -432,6 +376,14 @@ pub struct DecodeRule(
 impl DecodeRule { 
     pub fn separate(&self) -> (&'static str, Option<Prefix>, OpCode, Option<Vec<Extension>>, OpEn, Option<AddressingModes>) {
         ( self.0, self.1.clone(), self.2.clone(), self.extensions(), self.4.clone(), self.5.clone())
+    }
+
+    pub fn validate_addressing_mode(&self, modrm: ModRM) -> Result<(),DecodeError> {
+        if !self.5.as_ref().is_some_and(|a| a.0.contains(&modrm.0.into())) { 
+            error!("Encountered invalid addressing mode: {:?}", modrm.0);
+            return Err(DecodeError::InvalidAddressingMode); 
+        } 
+        else { Ok(()) }
     }
 
     /// Returns a minimum length that is needed to encode the instruction and a bool indicating
@@ -491,22 +443,30 @@ impl DecodeRule {
         self.4.modrm_required()
     }
 
+    pub fn extensions_required(&self) -> bool {
+        self.3.is_some()
+    }
+
     /// Takes a [u8] and yields a Some([ModRM]) if the byte can be validated as a ModRM byte for the
     /// particular [DecodeRule] that self describes. If is not valid, then a [None] is returned.
-    pub fn modrm_byte(&self, byte: u8) -> Option<ModRM> {
+    pub fn modrm_byte(&self, byte: u8) -> Result<ModRM, DecodeError> {
         let ext_set      = self.3.clone();
         let addr_mode    = self.5.clone(); 
-        let Ok(modrm)        = ModRM::try_from(byte) else { return None; }; 
+        let modrm        = ModRM::try_from(byte)?; 
         let (md, rg, rm) = modrm.split();
 
         // Check that if extension dictates a value in the modrm byte that it is set.
         if ext_set.is_some() {
             let extensions = ext_set.as_ref().expect("Should be some due to conditional");
-            let Some(sdigit) = extensions.get_sdigit() else { return None };
+            let Some(sdigit) = extensions.get_sdigit() else { 
+                error!("Expected SDigit extension. Found None");
+                return Err(DecodeError::InvalidModRM);
+            };
 
             // Decoding rule and ModRM have incompatible REG bits.
             if !sdigit.is_sdigit(rg as u8) { 
-                return None; }
+                error!("Rule (sdigit) and ModRM (REG bits) conflict");
+                return Err(DecodeError::InvalidModRM) }
         }
 
 
@@ -515,9 +475,12 @@ impl DecodeRule {
             let addressing_mode = addr_mode.as_ref().expect("Should be some due to conditional");
 
             // Decoding rule and ModRM have incompatible MOD bits
-            if !addressing_mode.0.contains(&md.into()) { return None; }
+            if !addressing_mode.0.contains(&md.into()) {
+                error!("Rule (addressing mode) and ModRM (MOD bits) conflict");
+                return Err(DecodeError::InvalidModRM) 
+            }
         }
-        Some(modrm)
+        Ok(modrm)
     }
 
     pub fn implicit_operand(&self) -> Option<Register> {

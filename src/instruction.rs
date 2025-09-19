@@ -317,6 +317,8 @@ pub mod encoding {
         Register
     ); 
     impl Sib {
+
+        #[allow(unused)]
         pub fn bytes_remaining(&self) -> usize {
             unimplemented!("Length inspection not implemented for SIB");
         }
@@ -692,6 +694,7 @@ pub mod encoding {
 
         }
         impl Displacement {
+
             /// The number of bytes contained in the Displacement
             /// as seen on disk or in a file
             #[allow(unused)]
@@ -766,6 +769,50 @@ pub mod encoding {
                         Ok(Rel32(target))
                     }
                 }
+            }
+
+
+            /// Attempts to convert a byte range into a relative displacement.
+            ///
+            /// - *bytes*: a byte list
+            /// - *base*: the index in the byte list at which the displacement byte(s) start.
+            /// - *width*: byte width of the displacement.
+            /// - *
+            /// This is.... not the best implementation.
+            pub fn from_relative(bytes: &[u8], 
+                                 location: Offset, 
+                                 opcode_length: usize,
+                                 width: usize)
+                -> Result<Displacement,DecodeError>
+            {
+                let base = location.0 as usize;
+                let Some(dbytes) = bytes.get(base+opcode_length..base+opcode_length+width)
+                    else {
+                        error!("Index out of bounds when attempting to get bytes for Relative Displacement.");
+                        return Err(DecodeError::InvalidModRM);
+                    };
+
+                debug!("instruction base: {base}");
+                debug!("displacement bytes: {dbytes:X?}");
+
+                let displacement = match dbytes.len() {
+                    1 => {
+                        let byte = <[u8;1]>::try_from(dbytes).expect("Displacement length calculation should be correct");
+                        Displacement::from_byte_relative(location,opcode_length, &byte)
+                    },
+                    2 => {
+                        let bytes = <[u8;2]>::try_from(dbytes).expect("Displacement length calculation should be correct");
+                        Displacement::from_word_relative(location, opcode_length, &bytes)
+                    }, 
+                    4 => {
+                        let bytes = <[u8;4]>::try_from(dbytes).expect("Displacement length calculation should be correct");
+                        //debug!("Operands: {}", bytes.iter().map(|b| format!("{b:X}")).collect::<Vec<String>>().join(" "));
+                        Displacement::from_double_relative(location, opcode_length, &bytes)
+                    },
+                    _ => return Err(DecodeError::InvalidDisplacementByteWidth),
+                };
+
+                Ok(displacement)
             }
 
             pub fn from_byte_relative(address: Offset, opcode_length: usize, operand: &[u8;1]) -> Displacement {

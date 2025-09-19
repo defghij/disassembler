@@ -19,15 +19,14 @@ pub mod compendium {
         assert!(bytes.len() >= 1);
 
         let mut output = Output::new(10);
-
         let offset = Offset(0); // All test instructions start at Address Zero
+        let Ok(rules) = DecodeRules::get(&bytes[0]) 
+            else { error!("Encountered unexpected Opcode"); panic!() };
+
         info!("");
         info!("");
         info!("Checking\n:{expected}");
         info!("----------------------------------------");
-
-        let Ok(rules) = DecodeRules::get(&bytes[0]) 
-            else { error!("Encountered unexpected Opcode"); panic!() };
         
         for rule in rules { // We dont know which rule will decode into an instruction
             info!("");
@@ -35,13 +34,14 @@ pub mod compendium {
             info!("----------------------------------------");
 
             let (mut length, _fixed) = rule.len();
+            let base = offset.0 as usize;
             let requires_modrm = rule.modrm_required();
             debug!("rule reported modrm required: {requires_modrm}");
 
             let instruction = if requires_modrm { // We must decode bytes beyond the first to determine length
 
                 let modrm_location = rule.op_code().len();
-                let Some(modrm) = rule.modrm_byte(bytes[modrm_location]) else { continue };
+                let Ok(modrm) = rule.modrm_byte(bytes[modrm_location]) else { continue };
                 debug!("Got ModRM Byte: {modrm:?}");
 
                 let (len, is_final)= modrm.bytes_remaining();
@@ -56,7 +56,7 @@ pub mod compendium {
 
                 debug!("ModRM: {modrm:?},  0x{:02X}", modrm.as_byte());
 
-                let Some(prospective_bytes) = bytes.get(0.. length)
+                let Some(prospective_bytes) = bytes.get(base.. base + length)
                        else { error!("Test should have enough bytes for decoding instruction"); panic!() };
 
                 let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());

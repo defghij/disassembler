@@ -125,7 +125,7 @@ impl Output {
 }
 impl From<Vec<u8>> for Output 
 {
-    fn from(bytes: Vec<u8>) -> Self {
+    fn from(_bytes: Vec<u8>) -> Self {
         todo!()
     }
 }
