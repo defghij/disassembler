@@ -1,42 +1,48 @@
- //This contains tests from the course 
+
+//This contains tests from the course 
 #[cfg(test)]
 pub mod compendium {
+    use tracing_test::traced_test;
+    use tracing::{info, error, debug};
+
     use crate::instruction::encoding::Sib;
     #[allow(unused)]
     use crate::{
+        output::setup_tracing,
         decode::{
             Bytes, DecodeRule
         }, instruction::{encoding::operands::Offset, Instruction}, opcodes::DecodeRules, output::Output
     };
 
+    #[traced_test]
     fn check(expected: String, bytes: &[u8]) {
         assert!(bytes.len() >= 1);
 
         let mut output = Output::new(10);
 
         let offset = Offset(0); // All test instructions start at Address Zero
-        println!("");
-        println!("");
-        println!("Checking\n:{expected}");
-        println!("----------------------------------------");
+        info!("");
+        info!("");
+        info!("Checking\n:{expected}");
+        info!("----------------------------------------");
 
-        let rules = DecodeRules::get(&bytes[0])
-            .expect("Should be a defined opcode mapping");
+        let Ok(rules) = DecodeRules::get(&bytes[0]) 
+            else { error!("Encountered unexpected Opcode"); panic!() };
         
         for rule in rules { // We dont know which rule will decode into an instruction
-            println!("");
-            println!("Attempting Decode using rule: {rule:?}");
-            println!("----------------------------------------");
+            info!("");
+            info!("Attempting Decode using rule: {rule:?}");
+            info!("----------------------------------------");
 
             let (mut length, _fixed) = rule.len();
             let requires_modrm = rule.modrm_required();
-            println!("rule reported modrm required: {requires_modrm}");
+            debug!("rule reported modrm required: {requires_modrm}");
 
             let instruction = if requires_modrm { // We must decode bytes beyond the first to determine length
 
                 let modrm_location = rule.op_code().len();
                 let Some(modrm) = rule.modrm_byte(bytes[modrm_location]) else { continue };
-                println!("Got ModRM Byte: {modrm:?}");
+                debug!("Got ModRM Byte: {modrm:?}");
 
                 let (len, is_final)= modrm.bytes_remaining();
                 length += len;
@@ -48,15 +54,15 @@ pub mod compendium {
                     length += sib.bytes_remaining();
                 }
 
-                println!("ModRM: {modrm:?},  0x{:02X}", modrm.as_byte());
+                debug!("ModRM: {modrm:?},  0x{:02X}", modrm.as_byte());
 
-                let prospective_bytes = bytes.get(0.. length)
-                        .expect("Test should have enough bytes for decoding instruction");
+                let Some(prospective_bytes) = bytes.get(0.. length)
+                       else { error!("Test should have enough bytes for decoding instruction"); panic!() };
 
                 let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
 
                 let instruction = if decode_attempt.is_ok() { decode_attempt.expect("Ok due to conditional") }
-                    else { continue };
+                    else { info!("Decode unsuccessful"); continue };
                 
                 instruction
             } 
@@ -64,23 +70,23 @@ pub mod compendium {
                 let (length, fixed) = rule.len();
                 assert!(fixed);
 
-                println!("rule reported byte length: {length}");
+                debug!("rule reported byte length: {length}");
 
-                let prospective_bytes = bytes.get(0..length)
-                    .expect("Test should have enough bytes for decoding instruction");
+                let Some(prospective_bytes) = bytes.get(0..length)
+                    else { error!("Test should have enough bytes for decoding instruction"); panic!() };
 
                 let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
 
                 let instruction = if decode_attempt.is_ok() { decode_attempt.expect("Ok due to conditional") }
-                    else { continue };
+                    else { info!("Decode unsuccessful"); continue };
 
                 instruction
             };
 
-            println!("Attempted Instruction\n:{instruction:?}");
+            info!("Instruction\n:{instruction:?}");
 
             if instruction.decoded_successfully() {
-                println!("Decoded Instruction\n:{instruction:?}");
+                info!("Decoded Instruction\n:{instruction:?}");
                 output.add(instruction.clone())
                     .expect("This manually decoded instruction should be valid");
                 if rule.makes_label() {

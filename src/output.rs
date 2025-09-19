@@ -10,6 +10,25 @@ use crate::{
 };
 
 
+pub fn setup_tracing(level: tracing::level_filters::LevelFilter) {
+    // construct a subscriber that prints formatted traces to stdout
+    let subscriber = tracing_subscriber::fmt()
+        .compact()
+        .with_target(false)
+        .with_line_number(true)
+        .with_file(true)
+        .with_thread_ids(false)
+        .with_max_level(level)
+        .without_time()
+        .with_test_writer()
+        .pretty()
+        .finish();
+
+    // use that subscriber to process traces emitted after this point
+    tracing::subscriber::set_global_default(subscriber).expect("Subscriber setup should succeed");
+}
+
+
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Line {
     /// Labeled
@@ -44,14 +63,12 @@ impl Display for Line {
     }
 }
 
-
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Output {
     lines: Vec<Option<Line>>,
     pointer: Offset,
     width: usize
 }
-
 #[allow(unused)]
 impl Output {
     pub fn new(bytes: usize) -> Output {
@@ -130,8 +147,6 @@ impl Display for Output {
         write!(f, "{}", lines)
     }
 }
-
-
 
 #[test]
 fn single_line() {

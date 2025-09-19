@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use tracing::{debug, error};
+
 use crate::decode::DecodeError;
 use encoding::operands::{
     Offset, 
@@ -240,7 +242,7 @@ pub mod encoding {
         /// not include the [ModRM] byte and there are no other bytes in the instruction decode
         pub fn bytes_remaining(&self) -> (usize, bool) {
             let byte: u8 = self.into();
-            println!("MODRM byte: 0x{byte:02X}");
+            debug!("MODRM byte: 0x{byte:02X}");
             let remaining = match byte {
                 0x00 ..= 0x3F => {
                     if self.2 == 0b101 { (4 /*disp32*/, true) } else
@@ -319,6 +321,15 @@ pub mod encoding {
             unimplemented!("Length inspection not implemented for SIB");
         }
 
+        pub fn sib(bytes: &[u8], base: usize) -> Result<Sib, DecodeError> {
+            let Some(sib) = bytes.get(base - 1) 
+                else { 
+                    error!("Unable to create Sib. Bytes length incorrect");
+                    return Err(DecodeError::InvalidLength);
+                };
+            Sib::try_from(*sib)
+        }
+
     }
     impl TryFrom<u8> for Sib {
         type Error = DecodeError;
@@ -331,7 +342,7 @@ pub mod encoding {
             // According to Table 2-3, there is no valid sib byte with an
             // Index of 0b100 (ESP register)
             if index == Register::ESP {
-                println!("Rejecting potential SIB byte");
+                error!("Rejecting potential SIB byte");
                 return Err(DecodeError::InvalidSib);
             }
 
@@ -365,7 +376,7 @@ pub mod encoding {
         impl EffectiveAddress {
             
             pub fn from(modrm: ModRM, sib: Sib, displacement: Option<Displacement>) -> Result<EffectiveAddress, DecodeError> {
-                println!("MODRM: {modrm:?}\nSIB: {:?}", sib.clone());
+                debug!("MODRM: {modrm:?}\nSIB: {:?}", sib.clone());
                 let scale = sib.0;
                 let index = sib.1;
                 let base = sib.2;
@@ -532,7 +543,7 @@ pub mod encoding {
                     2 => Ok(Scale::Four),
                     3 => Ok(Scale::Eight),
                     _ => {
-                        println!("Rejecting u8 --> Scale transform");
+                        error!("Rejecting u8 --> Scale transform");
                         Err(DecodeError::InvalidSib)
                     },
                 }
@@ -624,7 +635,7 @@ pub mod encoding {
                     6 => Ok(Register::ESI),
                     7 => Ok(Register::EDI),
                     _ => {
-                        println!("Failed u8 to Register transform");
+                        error!("Failed u8 to Register transform");
                         Err(DecodeError::InvalidRegister)
                     },
                 }
@@ -694,6 +705,26 @@ pub mod encoding {
                 }
             }
 
+            pub fn disp8(bytes: &[u8], base: usize) -> Result<Displacement, DecodeError> {
+                let Some(displacement) = bytes.get(base..base + 1) 
+                    else { 
+                        error!("Byte length error when creating Displacement");
+                        return Err(DecodeError::InvalidLength) 
+                    };
+                let displacement = Displacement::try_from(displacement)?;
+                Ok(displacement)
+            }
+
+            pub fn disp32(bytes: &[u8], base: usize) -> Result<Displacement, DecodeError> {
+                let Some(displacement) = bytes.get(base..base + 4) 
+                    else { 
+                        error!("Byte length error when creating Displacement");
+                        return Err(DecodeError::InvalidLength)
+                    };
+                let displacement = Displacement::try_from(displacement)?;
+                Ok(displacement)
+            }
+
             /// Returns a u32 of the inner integer. Note this may be upcast 
             /// to [u32].
             pub fn get_inner(&self) -> u32 {
@@ -742,9 +773,9 @@ pub mod encoding {
 
                 let displacement = byte_to_double_with_sign_extend(*operand);
                 let displacement = u32::from_be_bytes(displacement);
-                println!("Target = {displacement} + {base}");
+                debug!("Target = {displacement} + {base}");
                 let target = displacement + base;
-                println!("Target: 0x{target:X}");
+                debug!("Target: 0x{target:X}");
                 Displacement::Rel8(target as u8)
             }
 
@@ -761,7 +792,7 @@ pub mod encoding {
                 let base = address.0 + opcode_length as u32 + operand.len() as u32;
 
                 let displacement = u32::from_le_bytes(*operand);
-                println!("displacement: {displacement:X}");
+                debug!("displacement: {displacement:X}");
                 let target = displacement + base;
                 Displacement::Rel32(target)
             }
@@ -770,6 +801,9 @@ pub mod encoding {
             fn default() -> Self {
                 Displacement::None
             }
+        }
+        impl From<Displacement> for u32 {
+            fn from(value: Displacement) -> Self { value.get_inner() }
         }
         impl From<&Displacement> for u32 {
             fn from(value: &Displacement) -> Self { value.get_inner() }
@@ -854,14 +888,14 @@ pub mod encoding {
             let opcode_length = 1;
             let operand: &[u8] = &[0x6E];
             let base = address.0 + opcode_length + operand.len() as u32;
-            println!("{base:x}");
+            debug!("{base:x}");
 
             let displacement = <[u8;1]>::try_from(operand).unwrap();
             let displacement = byte_to_double_with_sign_extend(displacement);
             let displacement = u32::from_be_bytes(displacement);
-            println!("{displacement:x}");
+            debug!("{displacement:x}");
             let target = displacement + base;
-            println!("{target:x} ?= {expected_a:x}");
+            debug!("{target:x} ?= {expected_a:x}");
             assert_eq!(target, expected_a);
         }
 
@@ -873,13 +907,13 @@ pub mod encoding {
             let opcode_length = 1;
             let operand: &[u8] = &[0xAA, 0xBB, 0xBC, 0xD8];
             let base = address.0 + opcode_length + operand.len() as u32;
-            println!("{base:x}");
+            debug!("{base:x}");
 
             let displacement = <[u8;4]>::try_from(operand).unwrap();
             let displacement = u32::from_be_bytes(displacement);
-            println!("{displacement:x}");
+            debug!("{displacement:x}");
             let target = displacement + base;
-            println!("{target:x} ?= {expected_a:x}");
+            debug!("{target:x} ?= {expected_a:x}");
             assert_eq!(target, expected_a);
         }
 
