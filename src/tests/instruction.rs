@@ -34,27 +34,30 @@ pub mod compendium {
             info!("----------------------------------------");
 
             let (mut length, _fixed) = rule.len();
-            let base = offset.0 as usize;
-            let requires_modrm = rule.modrm_required();
-            debug!("rule reported modrm required: {requires_modrm}");
+            debug!("Rule reported opcode length: {length}");
 
-            let instruction = if requires_modrm { // We must decode bytes beyond the first to determine length
+            let base = offset.0 as usize;
+
+            let instruction = if rule.modrm_required() { // We must decode bytes beyond the first to determine length
+                debug!("ModRM required for instruction decode");
 
                 let modrm_location = rule.op_code().len();
                 let Ok(modrm) = rule.modrm_byte(bytes[modrm_location]) else { continue };
-                debug!("Got ModRM Byte: {modrm:?}");
+                debug!("Got ModRM Byte: 0x{:X} = {modrm:?}", modrm.as_byte());
 
-                let (len, is_final)= modrm.bytes_remaining();
-                length += len;
+                let sib = if modrm.precedes_sib_byte() {
+                    debug!("Attempting decode of SIB byte from 0x{:X}", bytes[modrm_location+1]);
+                    let sib = Sib::try_from(bytes[modrm_location+1]);
+                    if sib.is_err() { continue; } 
+                    else { sib.ok() }
+                } else { None };
 
-                // Case where ModRM does not relay enough information to determine the
-                // instruction length.
-                if modrm.precedes_sib_byte() && !is_final {
-                    let Ok(sib) = Sib::try_from(bytes[modrm_location+1]) else { continue };
-                    length += sib.bytes_remaining();
-                }
+                let Ok(bytes_remaining) = modrm.bytes_remaining(sib)
+                    else { continue; };
+                length += bytes_remaining;
 
-                debug!("ModRM: {modrm:?},  0x{:02X}", modrm.as_byte());
+                debug!("Instuction length updated: {length}");
+                debug!("Grabbing byte range {:?} for decode attempt", (base..base+length));
 
                 let Some(prospective_bytes) = bytes.get(base.. base + length)
                        else { error!("Test should have enough bytes for decoding instruction"); panic!() };
@@ -67,8 +70,6 @@ pub mod compendium {
                 instruction
             } 
             else { // We can know the length of the instruction _a priori_
-                let (length, fixed) = rule.len();
-                assert!(fixed);
 
                 debug!("rule reported byte length: {length}");
 

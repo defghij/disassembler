@@ -217,16 +217,16 @@ pub mod encoding {
         pub Register,
         // RM
         // Only low three bits are valid
-        pub u8
+        pub Register
     ); 
     impl ModRM {
 
         pub fn precedes_sib_byte(&self) -> bool {
-            self.2 == 0b100
+            self.2 == Register::ESP
         }
 
         /// Returns the different parts of the [ModRM] bytes: (MOD, REG, RM)
-        pub fn split(&self) -> (ModBits, Register, u8) { (self.0.clone(), self.1.clone(), self.2.clone()) }
+        pub fn split(&self) -> (ModBits, Register, Register) { (self.0.clone(), self.1.clone(), self.2.clone()) }
 
         pub fn as_byte(&self) -> u8 { let byte: u8 = self.into(); byte }
 
@@ -240,26 +240,43 @@ pub mod encoding {
         ///
         /// Example: a byte value of `0xF1`, then this function would return `(0, true)` which does 
         /// not include the [ModRM] byte and there are no other bytes in the instruction decode
-        pub fn bytes_remaining(&self) -> (usize, bool) {
-            let byte: u8 = self.into();
-            debug!("MODRM byte: 0x{byte:02X}");
-            let remaining = match byte {
-                0x00 ..= 0x3F => {
-                    if self.2 == 0b101 { (4 /*disp32*/, true) } else
-                    if self.2 == 0b100 { (1 /*SIB byte*/, false /*need SIB info*/) } 
-                    else { (0, true) }
+        pub fn bytes_remaining(&self, sib: Option<Sib>) -> Result<usize, DecodeError> {
+            let sib_byte = if sib.is_some() { 1 } else { 0 };
+            
+            let displacement = match self.0 {
+                ModBits::OO => {
+                    if self.2 == Register::EBP { 
+                        if sib.is_none() { 4 /*disp32*/ } 
+                        else {
+                            error!("Encountered SIB byte where none was expected");
+                            return Err(DecodeError::InvalidSib);
+                        }
+                    } else
+                    if self.2 == Register::ESP { 
+                        if sib.is_some() { 
+                            let sib = sib.expect("Is some due to conditional");
+                            if sib.2 == Register::EBP { 4 /*disp32*/ }
+                            else { 0 /*no displacement*/ }
+                        }
+                        else { 
+                            error!("Expected SIB byte and found None");
+                            return Err(DecodeError::InvalidSib);
+                        }
+                    }
+                    else { 0 }
                 },
-                0x40 ..= 0x7F => {
-                    if self.2 == 0b100 { (1 + 1 /*SIB Byte + disp8*/, true) } 
-                    else { (1, true) }
+                ModBits::OI => { 
+                    if self.2 == Register::ESP { 1 /* SIB w/ disp8*/ } 
+                    else { 1 }
                 },
-                0x80 ..= 0xBF => {
-                    if self.2 == 0b100 { (1 + 4 /*SIB Byte + disp32*/, true)} 
-                    else { (4, true) }
+                ModBits::IO => {
+                    if self.2 == Register::ESP { 4 /*SIB w/ disp32*/} 
+                    else { 4 }
                 },
-                0xC0 ..= 0xFF => { (0, true) }
-            }; 
-            remaining
+                ModBits::II => { 0 },
+            };
+
+            Ok(sib_byte + displacement)
         }
 
         #[allow(unused)]
@@ -287,7 +304,7 @@ pub mod encoding {
         fn try_from(value: u8) -> Result<Self, Self::Error> {
             let modbits = ModBits::try_from((value & 0b11000000) >> 6)?;
             let regbits = Register::try_from((value & 0b00111000) >> 3)?;
-            let rmbits = (value & 0b00000111) >> 0;
+            let rmbits = Register::try_from((value & 0b00000111) >> 0)?;
             Ok(Self (modbits, regbits, rmbits))
         }
     }
@@ -319,8 +336,9 @@ pub mod encoding {
     impl Sib {
 
         #[allow(unused)]
-        pub fn bytes_remaining(&self) -> usize {
-            unimplemented!("Length inspection not implemented for SIB");
+        pub fn bytes_remaining(&self, modrm: ModRM) -> usize {
+            if self.1 == Register::ESP { 0 }
+            else { 4 }
         }
 
         pub fn sib(bytes: &[u8], base: usize) -> Result<Sib, DecodeError> {
@@ -343,10 +361,10 @@ pub mod encoding {
 
             // According to Table 2-3, there is no valid sib byte with an
             // Index of 0b100 (ESP register)
-            if index == Register::ESP {
-                error!("Rejecting potential SIB byte");
-                return Err(DecodeError::InvalidSib);
-            }
+            //if index == Register::ESP {
+                //error!("Rejecting potential SIB byte");
+                //return Err(DecodeError::InvalidSib);
+            //}
 
             Ok(Self (scale, index, base))
         }
@@ -711,7 +729,7 @@ pub mod encoding {
             pub fn disp8(bytes: &[u8], base: usize) -> Result<Displacement, DecodeError> {
                 let Some(displacement) = bytes.get(base..base + 1) 
                     else { 
-                        error!("Byte length error when creating Displacement");
+                        error!("Byte length error when creating Displacement8");
                         return Err(DecodeError::InvalidLength) 
                     };
                 let displacement = Displacement::try_from(displacement)?;
@@ -721,7 +739,7 @@ pub mod encoding {
             pub fn disp32(bytes: &[u8], base: usize) -> Result<Displacement, DecodeError> {
                 let Some(displacement) = bytes.get(base..base + 4) 
                     else { 
-                        error!("Byte length error when creating Displacement");
+                        error!("Byte length error when creating Displacement32");
                         return Err(DecodeError::InvalidLength)
                     };
                 let displacement = Displacement::try_from(displacement)?;

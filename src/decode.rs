@@ -160,7 +160,12 @@ impl Bytes {
                 }
 
                 if extensions.contains(&Extension::IB) { 
-                    let imm = Immediate::Imm8(bytes[1.. 2].to_vec());
+                    let Some(imm) = bytes.get(1..2) 
+                        else {
+                            error!("Attempted to grab more bytes than where handed to function for instruction decode");
+                            return Err(DecodeError::InvalidLength);
+                        };
+                    let imm = Immediate::Imm8(imm.to_vec());
                     instruction.add(Operand::Immediate(imm));
                 }
 
@@ -169,7 +174,12 @@ impl Bytes {
                 }
 
                 if extensions.contains(&Extension::ID) { 
-                    let imm = Immediate::Imm32(bytes[1..5].to_vec());
+                    let Some(imm) = bytes.get(1..5) 
+                        else {
+                            error!("Attempted to grab more bytes than where handed to function for instruction decode");
+                            return Err(DecodeError::InvalidLength);
+                        };
+                    let imm = Immediate::Imm32(imm.to_vec());
                     instruction.add(Operand::Immediate(imm));
                 }
 
@@ -239,7 +249,7 @@ impl Bytes {
                 match modrm.0 {
                     ModBits::OO => {
                         match modrm.2 {
-                            0b100 => { // [--][--]
+                            Register::ESP => { // [--][--]
                                 let base: usize = opcode_length + 1 + 1 /*modrm + sib*/;
 
                                 let sib = Sib::sib(bytes, base)?;
@@ -250,7 +260,7 @@ impl Bytes {
 
                                 instruction.add(Operand::EffectiveAddress(eaddr));
                             },
-                            0b101 => { 
+                            Register::EBP => { 
                                 let base: usize = opcode_length + 1/*modrm byte*/;
 
                                 let displacement = Displacement::disp32(bytes,base)?;
@@ -260,8 +270,7 @@ impl Bytes {
                                 instruction.add(Operand::EffectiveAddress(displacement));
                             },
                             _     => { 
-                                let register = Register::try_from(modrm.2)?;
-                                let register = EffectiveAddress::base(register);
+                                let register = EffectiveAddress::base(modrm.2);
 
                                 instruction.add(Operand::EffectiveAddress(register));
                             }
@@ -270,7 +279,7 @@ impl Bytes {
                     },
                     ModBits::OI => {
                         match modrm.2 {
-                            0b100 => { // [--][--]+disp8
+                            Register::ESP => { // [--][--]+disp8
                                 unimplemented!("SIB byte not implemented for this address mode") 
                             },
                             _ => { 
@@ -293,7 +302,7 @@ impl Bytes {
                     },
                     ModBits::IO => {
                         match modrm.2 {
-                            0b100 => { // [--][--]+disp32
+                            Register::ESP => { // [--][--]+disp32
                                 let base: usize = opcode_length + 1 + 1 /*modrm + sib*/;
                                  
                                 let sib = Sib::sib(bytes, base)?;
@@ -318,8 +327,7 @@ impl Bytes {
                         }
                     },
                     ModBits::II => {
-                        let register = Register::try_from(modrm.2)?;
-                        instruction.add(Operand::Register(register));
+                        instruction.add(Operand::Register(modrm.2));
                     }
                 }
 
