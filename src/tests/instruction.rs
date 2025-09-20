@@ -5,7 +5,7 @@ pub mod compendium {
     use tracing_test::traced_test;
     use tracing::{info, error, debug};
 
-    use crate::instruction::encoding::Sib;
+    use crate::instruction::encoding::{operands::Operand, Sib};
     #[allow(unused)]
     use crate::{
         output::setup_tracing,
@@ -90,13 +90,19 @@ pub mod compendium {
                 info!("Decoded Instruction\n:{instruction:?}");
                 output.add(instruction.clone())
                     .expect("This manually decoded instruction should be valid");
-                if rule.makes_label() {
-                    let label = instruction
-                        .get_instruction().expect("Should be a valid instruction due to the conditional above")
-                        .get_displacement_offset().expect("Should be an instruction that requires a label reference due to conditional");
+                if rule.can_make_label() {
+                        let instruction = instruction
+                            .get_instruction().expect("Should be a valid instruction");
 
-                    let _ = output.label(label); // Dont worry about the result in a test. We'll
-                                                 // regularly add labels "beyond" range
+                    let has_label_operand = instruction.operands.iter().any(|op| matches!(op, Operand::Label(_)));
+
+                    if has_label_operand {
+                        let label = instruction
+                            .get_displacement_offset().expect("Should have label");
+
+                        let _ = output.label(label); // Dont worry about the result in a test. We'll
+                                                     // regularly add labels "beyond" range
+                    }
                 }
                 break; 
             }

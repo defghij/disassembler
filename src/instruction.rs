@@ -13,9 +13,9 @@ use encoding::operands::{
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Instruction {
-    prefix: Option<String>,
-    mnemonic: &'static str,
-    operands: Vec<Operand>,
+    pub prefix: Option<String>,
+    pub mnemonic: &'static str,
+    pub operands: Vec<Operand>,
 } 
 impl Instruction {
     pub fn new(mnemonic: &'static str) -> Instruction {
@@ -45,13 +45,13 @@ impl Instruction {
     pub fn get_displacement_offset(&self) -> Option<Offset> {
         let offsets: Vec<Offset> = self.operands
             .iter()
-            .filter(|o| { matches!(o, Operand::Displacement(_)) })
+            .filter(|o| { matches!(o, Operand::Displacement(_)) || matches!(o, Operand::Label(_)) })
             .map(|o: &Operand| {
-                let disp = match o {
-                    Operand::Displacement(displacement) => displacement,
+                let offset = match o {
+                    Operand::Displacement(displacement) => displacement.clone().into(),
+                    Operand::Label(offset) => (*offset).clone(),
                     _ => panic!("Should be unreachable due to the filter")
                 };
-                let offset: Offset = disp.clone().into();
                 offset 
             })
         .collect();
@@ -222,7 +222,13 @@ pub mod encoding {
     impl ModRM {
 
         pub fn precedes_sib_byte(&self) -> bool {
-            self.2 == Register::ESP
+            self.2 == Register::ESP && self.0 != ModBits::II
+        }
+
+        pub fn uses_displacement(&self) -> bool {
+            (self.0 == ModBits::OO && self.2 == Register::EBP) || 
+            self.0 == ModBits::OI ||
+            self.0 == ModBits::IO
         }
 
         /// Returns the different parts of the [ModRM] bytes: (MOD, REG, RM)
@@ -334,6 +340,9 @@ pub mod encoding {
         Register
     ); 
     impl Sib {
+        pub fn scale(&self) -> Scale { self.0.clone() }
+        pub fn index(&self) -> Register { self.1.clone() }
+        pub fn base(&self) -> Register { self.2.clone() }
 
         #[allow(unused)]
         pub fn bytes_remaining(&self, modrm: ModRM) -> usize {
@@ -395,47 +404,185 @@ pub mod encoding {
         #[allow(unused)]
         impl EffectiveAddress {
             
-            pub fn from(modrm: ModRM, sib: Sib, displacement: Option<Displacement>) -> Result<EffectiveAddress, DecodeError> {
-                debug!("MODRM: {modrm:?}\nSIB: {:?}", sib.clone());
+            pub fn from(modrm: ModRM, sib: Sib, displacement: Displacement) -> Result<EffectiveAddress, DecodeError> {
+                debug!("\nMODRM: {modrm:?}\nSIB: {:?}\nDisplacement: {displacement}", sib.clone());
                 let scale = sib.0;
                 let index = sib.1;
                 let base = sib.2;
-                let addr_mode = modrm.0;
-                
-                let ea = if addr_mode == ModBits::OO { // [index*scale + disp]
-                    let Some(displacement) = displacement 
-                        else {
-                            return Err(DecodeError::InvalidDisplacementByteWidth) 
-                        };
-                    EffectiveAddress::IndexDisp { 
-                        index, 
-                        scale,
-                        displacement: displacement.get_inner() 
-                    }
-                } else {
-                    if scale == Scale::One {  // [index*1 + base]
-                        EffectiveAddress::IndexBaseDisp {
-                            index,
-                            scale,
-                            base,
-                            displacement: displacement.unwrap_or_default(),
-                        }
-                    }
-                    else { // [index*scale + base + disp]
-                        let Some(displacement) = displacement 
-                            else { 
-                                return Err(DecodeError::InvalidDisplacementByteWidth) 
-                            };
-                        EffectiveAddress::IndexBaseDisp { 
-                            index, 
-                            scale,
-                            base,
-                            displacement
-                        }
-                    }
-                };
+                let mod_bits = modrm.0;
+                let reg_bits = modrm.1;
+                let rm_bits = modrm.2;
 
-                Ok(ea)
+                // case:  disp32
+                if mod_bits == ModBits::OO && rm_bits == Register::EBP {
+                    if matches!(displacement, Displacement::Abs32(_)) {
+                        EffectiveAddress::displacement(displacement.get_inner());
+                    }
+                    else {
+                        error!("Expected Displacement::Abs32 and found other"); 
+                        return Err(DecodeError::InvalidDisplacementByteWidth);
+                    }
+                }
+
+                // Cases: 
+                // - [--][--]
+                // - [--][--] + disp8
+                // - [--][--] + disp32
+                if modrm.precedes_sib_byte() {
+                    let use_base_register = !(base == Register::EBP && mod_bits == ModBits::OO);
+                    let displacement_used = !(scale == Scale::One && !use_base_register) &&
+                        modrm.uses_displacement();
+
+                    debug!("Use Base Register: {use_base_register}");
+                    debug!("Displacement Used: {displacement_used}");
+
+
+
+                    if displacement_used && displacement == Displacement::None {
+                        error!("Expected Displacement but found DisplacementNone");
+                        return Err(DecodeError::InvalidDisplacementByteWidth);
+                    }
+
+
+                    //if !displacement_used && displacement != Displacement::None {
+                        //error!("Expected no Displacement but found Displacement");
+                        //return Err(DecodeError::InvalidDisplacementByteWidth);
+                    //}
+
+                    let ea = match use_base_register {
+                        true => { // Form: [base + disp] 
+                            if index == Register::ESP {
+                                EffectiveAddress::BaseDisp {
+                                    base,
+                                    displacement,
+                                }
+                            }
+                            else { // Form: [index*scale + base + disp] 
+                                EffectiveAddress::IndexBaseDisp {
+                                    index,
+                                    scale,
+                                    base,
+                                    displacement,
+                                }
+                            }
+                        },
+                        false => { // Form: [index*scale + disp]
+                            EffectiveAddress::IndexDisp {
+                                index,
+                                scale,
+                                displacement: displacement.get_inner()
+                            }
+                        }
+                    }; 
+                    return Ok(ea);
+                }
+
+
+                // End special cases...
+                // Remainder of cases:
+                // - (0b00) [ REG ]
+                // - (0b01) [ REG ] + disp8
+                // - (0b10) [ REG ] + disp32
+                // - (0b11) REG
+                let effective_address = match mod_bits {
+                    ModBits::OO => {
+                        EffectiveAddress::BaseDisp {
+                            base: rm_bits,
+                            displacement: Displacement::None,
+                        }
+                    },
+                    ModBits::OI | ModBits::IO => {
+                        EffectiveAddress::BaseDisp {
+                            base: rm_bits,
+                            displacement,
+                        }
+                    },
+                    ModBits::II => {
+                        EffectiveAddress::Register {
+                            reg: rm_bits,
+                        }
+                    },
+                };
+                
+                Ok(effective_address)
+                
+                //let ea = if addr_mode == ModBits::OO { 
+                    //// Possibilities: 
+                    //// -[ REG ]
+                    //// - [--][--]
+                    //// - disp32
+                    //// - [index*scale + disp] 
+                    
+                    //match modrm.1 {
+                        //Register::ESP => todo!(),
+                        //Register::EBP => todo!(),
+                        //_ => todo!()
+                    //}
+                    //if modrm.1 == Register::ESP {
+                        //// Possibilities: 
+                        //// handle [base + None]
+
+                    //}
+
+                    //if modrm.1 
+
+                    //if index == Register::ESP && scale == Scale::One { 
+
+                    //}
+                    //match displacement {
+                        //Some(d) => {
+                            //EffectiveAddress::IndexDisp { 
+                                //index, 
+                                //scale,
+                                //displacement: d.get_inner() 
+                            //}
+                        //},
+                        //None => {  
+                            //EffectiveAddress::BaseDisp {
+                                //base,
+                                //displacement: Displacement::None,
+                            //}
+                        //},  
+                    //}
+                    ////let Some(displacement) = displacement 
+                        ////else {
+                            ////if index == Register::ESP {
+                                ////todo!()
+                            ////} else {
+                                ////error!("Expected displacement but found None");
+                                ////return Err(DecodeError::InvalidDisplacementByteWidth) ;
+                            ////}
+                        ////};
+                    ////EffectiveAddress::IndexDisp { 
+                        ////index, 
+                        ////scale,
+                        ////displacement: displacement.get_inner() 
+                    ////}
+                //} else {
+                    //if scale == Scale::One {  // [index*1 + base]
+                        //EffectiveAddress::IndexBaseDisp {
+                            //index,
+                            //scale,
+                            //base,
+                            //displacement: displacement.unwrap_or_default(),
+                        //}
+                    //}
+                    //else { // [index*scale + base + disp]
+                        //let Some(displacement) = displacement 
+                            //else { 
+                                //error!("Expected displacement but found None");
+                                //return Err(DecodeError::InvalidDisplacementByteWidth) 
+                            //};
+                        //EffectiveAddress::IndexBaseDisp { 
+                            //index, 
+                            //scale,
+                            //base,
+                            //displacement
+                        //}
+                    //}
+                //};
+
+                //Ok(ea)
             }
 
              /// reg

@@ -235,6 +235,7 @@ impl Bytes {
                 }
             }
             OpEn::M => { 
+                debug!("OpEn::M");
                 let modrm = modrm.expect("ModRM should already be validated");
                 
 
@@ -248,19 +249,22 @@ impl Bytes {
 
                 match modrm.0 {
                     ModBits::OO => {
+                        debug!("Mod bits: {:?}", modrm.0);
                         match modrm.2 {
                             Register::ESP => { // [--][--]
+                                debug!("RM bits: {:?}", modrm.2);
                                 let base: usize = opcode_length + 1 + 1 /*modrm + sib*/;
 
                                 let sib = Sib::sib(bytes, base)?;
-
-                                let displacement = Displacement::disp32(bytes, base)?;
-
-                                let eaddr = EffectiveAddress::from(modrm, sib, Some(displacement))?;
-
+                                let eaddr  = if sib.base() == Register::EBP {
+                                        let displacement = Displacement::disp32(bytes, base)?;
+                                        EffectiveAddress::from(modrm, sib, displacement)?
+                                    } else { EffectiveAddress::from(modrm, sib, Displacement::None)? };
                                 instruction.add(Operand::EffectiveAddress(eaddr));
+
                             },
                             Register::EBP => { 
+                                debug!("RM bits: {:?}", modrm.2);
                                 let base: usize = opcode_length + 1/*modrm byte*/;
 
                                 let displacement = Displacement::disp32(bytes,base)?;
@@ -270,6 +274,7 @@ impl Bytes {
                                 instruction.add(Operand::EffectiveAddress(displacement));
                             },
                             _     => { 
+                                debug!("RM bits: {:?}", modrm.2);
                                 let register = EffectiveAddress::base(modrm.2);
 
                                 instruction.add(Operand::EffectiveAddress(register));
@@ -278,11 +283,14 @@ impl Bytes {
                         }
                     },
                     ModBits::OI => {
+                        debug!("Mod bits: {:?}", modrm.0);
                         match modrm.2 {
                             Register::ESP => { // [--][--]+disp8
+                                debug!("RM bits: {:?}", modrm.2);
                                 unimplemented!("SIB byte not implemented for this address mode") 
                             },
                             _ => { 
+                                debug!("RM bits: {:?}", modrm.2);
                                 let base: usize = opcode_length + 1/*modrm byte*/;
 
                                 if bytes.len() < base + 1 /*displacement*/ { 
@@ -301,19 +309,23 @@ impl Bytes {
 
                     },
                     ModBits::IO => {
+                        debug!("Mod bits: {:?}", modrm.0);
+
                         match modrm.2 {
                             Register::ESP => { // [--][--]+disp32
+                                debug!("RM bits: {:?}", modrm.2);
                                 let base: usize = opcode_length + 1 + 1 /*modrm + sib*/;
                                  
                                 let sib = Sib::sib(bytes, base)?;
 
                                 let displacement = Displacement::disp32(bytes, base)?;
 
-                                let eaddr = EffectiveAddress::from(modrm, sib, Some(displacement))?;
+                                let eaddr = EffectiveAddress::from(modrm, sib, displacement)?;
 
                                 instruction.add(Operand::EffectiveAddress(eaddr));
                             },
                             _ => { 
+                                debug!("RM bits: {:?}", modrm.2);
                                 let base: usize = opcode_length + 1/*modrm byte*/;
 
                                 if bytes.len() < base + 4 { return Err(DecodeError::InvalidLength); }
@@ -327,6 +339,7 @@ impl Bytes {
                         }
                     },
                     ModBits::II => {
+                        debug!("Mod bits: {:?}", modrm.0);
                         instruction.add(Operand::Register(modrm.2));
                     }
                 }
@@ -510,7 +523,7 @@ impl DecodeRule {
         else { None }
     }
 
-    pub fn makes_label(&self) -> bool {
+    pub fn can_make_label(&self) -> bool {
         match self.mnemonic() {
             "call" => true,
             _ => false,
