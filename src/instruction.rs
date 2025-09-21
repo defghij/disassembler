@@ -392,10 +392,10 @@ pub mod encoding {
             Register { reg: Register },
 
             /// [index*scale + disp32]
-            IndexDisp { index: Register, scale: Scale, displacement: u32 },
+            IndexDisp { index: Register, scale: Scale, displacement: Displacement},
 
             /// [disp32] 
-            Displacement { displacement: u32 },
+            Displacement { displacement: Displacement },
 
             /// [base + disp?]
             BaseDisp { base: Register, displacement: Displacement },
@@ -478,7 +478,7 @@ pub mod encoding {
                             EffectiveAddress::IndexDisp {
                                 index,
                                 scale,
-                                displacement: displacement.get_inner()
+                                displacement
                             }
                         }
                     }; 
@@ -513,84 +513,6 @@ pub mod encoding {
                 };
                 
                 Ok(effective_address)
-                
-                //let ea = if addr_mode == ModBits::OO { 
-                    //// Possibilities: 
-                    //// -[ REG ]
-                    //// - [--][--]
-                    //// - disp32
-                    //// - [index*scale + disp] 
-                    
-                    //match modrm.1 {
-                        //Register::ESP => todo!(),
-                        //Register::EBP => todo!(),
-                        //_ => todo!()
-                    //}
-                    //if modrm.1 == Register::ESP {
-                        //// Possibilities: 
-                        //// handle [base + None]
-
-                    //}
-
-                    //if modrm.1 
-
-                    //if index == Register::ESP && scale == Scale::One { 
-
-                    //}
-                    //match displacement {
-                        //Some(d) => {
-                            //EffectiveAddress::IndexDisp { 
-                                //index, 
-                                //scale,
-                                //displacement: d.get_inner() 
-                            //}
-                        //},
-                        //None => {  
-                            //EffectiveAddress::BaseDisp {
-                                //base,
-                                //displacement: Displacement::None,
-                            //}
-                        //},  
-                    //}
-                    ////let Some(displacement) = displacement 
-                        ////else {
-                            ////if index == Register::ESP {
-                                ////todo!()
-                            ////} else {
-                                ////error!("Expected displacement but found None");
-                                ////return Err(DecodeError::InvalidDisplacementByteWidth) ;
-                            ////}
-                        ////};
-                    ////EffectiveAddress::IndexDisp { 
-                        ////index, 
-                        ////scale,
-                        ////displacement: displacement.get_inner() 
-                    ////}
-                //} else {
-                    //if scale == Scale::One {  // [index*1 + base]
-                        //EffectiveAddress::IndexBaseDisp {
-                            //index,
-                            //scale,
-                            //base,
-                            //displacement: displacement.unwrap_or_default(),
-                        //}
-                    //}
-                    //else { // [index*scale + base + disp]
-                        //let Some(displacement) = displacement 
-                            //else { 
-                                //error!("Expected displacement but found None");
-                                //return Err(DecodeError::InvalidDisplacementByteWidth) 
-                            //};
-                        //EffectiveAddress::IndexBaseDisp { 
-                            //index, 
-                            //scale,
-                            //base,
-                            //displacement
-                        //}
-                    //}
-                //};
-
-                //Ok(ea)
             }
 
              /// reg
@@ -600,6 +522,7 @@ pub mod encoding {
 
              /// [disp]
             pub fn displacement(displacement: u32) -> EffectiveAddress { 
+                let displacement = operands::Displacement::Abs32(displacement);
                 EffectiveAddress::Displacement{ displacement }
             }
 
@@ -635,6 +558,7 @@ pub mod encoding {
 
             /// [index*scale + disp32]
             pub fn index_d32(index: Register, scale:Scale, displacement: u32) -> EffectiveAddress {
+                let displacement = Displacement::Abs32(displacement);
                 EffectiveAddress::IndexDisp { index, scale, displacement }
             }
         }
@@ -656,48 +580,23 @@ pub mod encoding {
                     Register { reg } => { write!(f, "{reg}") 
                     },
                     Displacement { displacement } => {
-                        write!(f, "[ 0x{:08X} ]", displacement)
+                        write!(f, "[ {displacement} ]")
                     },
                     IndexDisp { index, scale, displacement } => {
                         match scale {
                             Scale::One => {
-                                write!(f, "[ {index} + 0x{:08X} ]", displacement)
+                                write!(f, "[ {index}{} ]", displacement.format_optional_operand())
                             },
                             _=> {
-                                write!(f, "[ {index} * {scale} + 0x{:08X} ]", displacement)
+                                write!(f, "[ {index} * {scale}{} ]", displacement.format_optional_operand())
                             }
                         }
                     }
-                    BaseDisp { base, displacement} => {
-                        match displacement {
-                            operands::Displacement::None => { write!(f, "[ {base} ]") }
-                            _ => { write!(f, "[ {base} + {displacement} ]") }
-                        }
-                    }
+                    BaseDisp { base, displacement} => { write!(f, "[ {base}{} ]", displacement.format_optional_operand())}
                     IndexBaseDisp { index, scale, base, displacement } => {
-                        // This is pretty gross......... ewww.
-                        match displacement {
-                            operands::Displacement::None => {
-                                match scale {
-                                    Scale::One => {
-                                        write!(f, "[ {index} + {base} ]")
-                                    },
-                                    _ => {
-                                        write!(f, "[ {index} * {scale} + {base} ]")
-                                    }
-                                }
-                            },
-                            _ => { 
-                                match scale {
-                                    Scale::One => {
-                                        write!(f, "[ {index} + {base} + {displacement} ]")
-                                    },
-                                    _ => {
-                                        write!(f, "[ {index} * {scale} + {base} + {displacement} ]")
-                                    }
-                                }
-                            }
-                        }
+                        write!(f, "[ {index}{} + {base}{} ]",
+                            scale.format_optional_operand(),
+                            displacement.format_optional_operand())
                     }
                 }
             }
@@ -707,6 +606,13 @@ pub mod encoding {
         pub enum Scale { 
             One = 0, Two = 1, 
             Four = 2, Eight = 3
+        }
+        impl Scale {
+            pub fn format_optional_operand(&self) -> String {
+                if *self == Scale::One { format!("") }
+                else { format!(" * {self}") }
+            }
+
         }
         impl TryFrom<u8> for Scale {
             type Error = DecodeError;
@@ -879,6 +785,11 @@ pub mod encoding {
                     Rel16(_) | Abs16(_) => 2,
                     Rel32(_) | Abs32(_) => 4,
                 }
+            }
+
+            pub fn format_optional_operand(&self) -> String {
+                if *self == Displacement::None || self.get_inner() == 0 { format!("") } 
+                else { format!(" + {self}") }
             }
 
             pub fn disp8(bytes: &[u8], base: usize) -> Result<Displacement, DecodeError> {
