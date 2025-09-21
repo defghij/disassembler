@@ -405,6 +405,16 @@ pub mod encoding {
         }
         #[allow(unused)]
         impl EffectiveAddress {
+
+            pub fn len(&self) -> usize {
+                match self {
+                    EffectiveAddress::Register { reg } => 0,
+                    EffectiveAddress::IndexDisp { index, scale, displacement } => displacement.len(),
+                    EffectiveAddress::Displacement { displacement } => displacement.len(),
+                    EffectiveAddress::BaseDisp { base, displacement } => displacement.len(),
+                    EffectiveAddress::IndexBaseDisp { index, scale, base, displacement } => displacement.len(),
+                }
+            }
             
             pub fn from(modrm: ModRM, sib: Option<Sib>, displacement: Displacement) -> Result<EffectiveAddress, DecodeError> {
                 debug!("\nMODRM: {modrm:?}\nSIB: {:?}\nDisplacement: {displacement:?}", sib.clone());
@@ -655,6 +665,16 @@ pub mod encoding {
                 match self {
                     Operand::Displacement(displacement) => Some(displacement.clone()),
                     _ => None,
+                }
+            }
+
+            pub fn len(&self) -> usize {
+                match self {
+                    Operand::Register(_register) => 0,
+                    Operand::Immediate(immediate) => immediate.len(),
+                    Operand::Displacement(displacement) => displacement.len(),
+                    Operand::EffectiveAddress(effective_address) => effective_address.len(),
+                    Operand::Label(_) => 0,
                 }
             }
         }
