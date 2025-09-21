@@ -225,17 +225,18 @@ pub mod compendium {
             .for_each(|(s,b)| { check(s.to_string(),b); });
     }
 
-    //#[test]
-    //fn mi_rm_and_immediate() {
-        //let mapping: Vec<(&str, &[u8])> = vec![
-            //("or edi, 0xAABBCCDD",
-             //&[0x81, 0xCF, 0xDD, 0xCC, 0xBB, 0xAA]),
+    #[test]
+    fn mi_rm_and_immediate() {
+        let mapping: Vec<(&str, &[u8])> = vec![
+            ("00000000: 81 CF DD CC BB AA     or edi, 0xAABBCCDD",
+             &[0x81, 0xCF, 0xDD, 0xCC, 0xBB, 0xAA]),
 
-            //("xor [ ebp ], 0xAABBCCDD",
-             //&[0x81, 0x75, 0x00, 0xDD, 0xCC, 0xBB, 0xAA]),
-        //];
-        //check_instructions(mapping);
-    //}
+            ("00000000: 81 75 00 DD CC BB AA     xor [ ebp ], 0xAABBCCDD",
+             &[0x81, 0x75, 0x00, 0xDD, 0xCC, 0xBB, 0xAA]),
+        ];
+        mapping.iter()
+            .for_each(|(s,b)| { check(s.to_string(),b); });
+    }
 
     //#[test]
     //fn mr_rm_and_reg() {

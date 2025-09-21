@@ -108,6 +108,7 @@ impl Bytes {
         let mut sib_idx   = 0;
         let mut disp_idx  = 0;
         let mut disp_len  = 0;
+        let mut imm_idx   = 0;
         let mut instruction_length = opcode_length;
 
         let modrm = if rule.modrm_required() {
@@ -235,22 +236,11 @@ impl Bytes {
                     instruction.add(Operand::Register(register));
                 }
 
-                if extensions.contains(&Extension::IB) { 
-                    let imm = Immediate::Imm8(bytes[1..2].to_vec());
-                    instruction_length += imm.len();
-                    instruction.add(Operand::Immediate(imm));
-                }
+                imm_idx = instruction_length;
 
-                if extensions.contains(&Extension::IW) { 
-                    error!("Opcode Extension for immediate word is not implemented");
-                    return Err(DecodeError::InvalidOpCodeExtension);
-                }
-
-                if extensions.contains(&Extension::ID) { 
-                    let imm = Immediate::Imm32(bytes[1..5].to_vec());
-                    instruction_length += imm.len();
-                    instruction.add(Operand::Immediate(imm));
-                }
+                let imm = Bytes::decode_immediate(bytes, imm_idx, extensions)?;
+                instruction_length += imm.len();
+                instruction.add(Operand::Immediate(imm));
 
                 Bytes::Decoded {
                     bytes: bytes[..instruction_length].to_vec(),
@@ -376,7 +366,7 @@ impl Bytes {
                 }
             },
             OpEn::M1 => {
-                debug!("OpEn::M");
+                debug!("OpEn::M1");
                 let Some(modrm) = modrm else { 
                     error!("This OpEn requires a MODRM byte but found None");
                     return Err(DecodeError::InvalidModRM);
@@ -411,7 +401,59 @@ impl Bytes {
                     instruction,
                 }
             },
-            OpEn::MI => { todo!() },
+            OpEn::MI => { 
+                debug!("OpEn::MI");
+                
+                // Take care of the M part of MI
+                /////////////////////////////////////////
+
+                let Some(modrm) = modrm else { 
+                    error!("This OpEn requires a MODRM byte but found None");
+                    return Err(DecodeError::InvalidModRM);
+                };
+                
+                let mut displacement = Displacement::None;
+
+                if sib.as_ref().is_some_and(|s| s.base() == Register::EBP && modrm.0 == ModBits::OO ){
+                    displacement = Displacement::disp32(bytes, disp_idx)?;
+                } else 
+                if modrm.uses_displacement() {
+                    displacement = match modrm.0 {
+                        ModBits::OO | ModBits::IO => Displacement::disp32(bytes, disp_idx)?,
+                        ModBits::OI => Displacement::disp8(bytes, disp_idx)?,
+                        _ => { Displacement::None }
+                    };
+                }
+                else {
+                    displacement = Displacement::None;
+                };
+
+                instruction_length += displacement.len();
+
+                let effective_address = EffectiveAddress::from(modrm, sib, displacement)?;
+
+                instruction.add(Operand::EffectiveAddress(effective_address));
+
+                // Take care of the I part of MI
+                ///////////////////////////////////////////////
+                imm_idx = instruction_length;
+                debug!("imm_idx: {imm_idx}");
+                
+                if !extensions.as_ref().is_some_and(|exts| exts.len() == 2) { 
+                    error!("Incorrect number of OpCode Extensions. Expected 2");
+                    return Err(DecodeError::InvalidOpCodeExtension); 
+                }
+                let extensions = extensions.expect("Is some due to conditional above");
+
+                let imm = Bytes::decode_immediate(bytes, imm_idx, extensions)?;
+                instruction_length += imm.len();
+                instruction.add(Operand::Immediate(imm));
+
+                Bytes::Decoded {
+                    bytes: bytes[..instruction_length].to_vec(),
+                    instruction,
+                }
+            },
             OpEn::RM => { todo!() },
             OpEn::MR => { todo!() },
             OpEn::NP => { todo!() },
@@ -420,6 +462,32 @@ impl Bytes {
         };
 
         Ok(instruction)
+    }
+
+    pub fn decode_immediate(bytes: &[u8], idx: usize, extensions: Vec<Extension>) -> Result<Immediate, DecodeError> {
+        if extensions.contains(&Extension::IB) { 
+            let Some(imm) = bytes.get(idx..idx + 1) 
+                else {
+                    error!("Attempted to grab more bytes than where handed to function for instruction decode");
+                    return Err(DecodeError::InvalidLength);
+                };
+            Ok(Immediate::Imm8(imm.to_vec()))
+        } else 
+        if extensions.contains(&Extension::IW) { 
+            error!("Extension for Immediate Word is not implemented"); 
+            return Err(DecodeError::DecodeFailure);
+        } else
+        if extensions.contains(&Extension::ID) { 
+            let Some(imm) = bytes.get(idx.. idx + 4) 
+                else {
+                    error!("Attempted to grab more bytes than where handed to function for instruction decode");
+                    return Err(DecodeError::InvalidLength);
+                };
+            Ok(Immediate::Imm32(imm.to_vec()))
+        } else {
+            error!("Encountered error case when attempting to decode an immediate");
+            Err(DecodeError::DecodeFailure)
+        }
     }
 
     pub fn operands(&self) -> Option<Vec<String>> { unimplemented!("lol"); }
@@ -497,8 +565,7 @@ impl DecodeRule {
             },
             OpEn::RM => unimplemented!("`len` not implemented for this Operand Encoding"),
             OpEn::MR => unimplemented!("`len` not implemented for this Operand Encoding"),
-            OpEn::MI => unimplemented!("`len` not implemented for this Operand Encoding"),
-            OpEn::M | OpEn::M1 => {
+            OpEn::M | OpEn::M1 | OpEn::MI => {
                 let extensions = extensions.as_ref().expect("All Rules with an OpEn::M encoding should require an extension");
                 let mut bytes = extensions.iter()
                     .filter(|ext| ext.operand_length().is_some())

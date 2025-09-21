@@ -130,7 +130,7 @@ impl OpEn {
         match self {
             OpEn::RM => unimplemented!("Not yet implemented"),
             OpEn::MR => unimplemented!("Not yet implemented"),
-            OpEn::MI => unimplemented!("Not yet implemented"),
+            OpEn::MI => 2,
             OpEn::M1 => 2,
             OpEn::M  => 1,
             OpEn::I  => 1,
@@ -407,7 +407,7 @@ pub mod encoding {
         impl EffectiveAddress {
             
             pub fn from(modrm: ModRM, sib: Option<Sib>, displacement: Displacement) -> Result<EffectiveAddress, DecodeError> {
-                debug!("\nMODRM: {modrm:?}\nSIB: {:?}\nDisplacement: {displacement}", sib.clone());
+                debug!("\nMODRM: {modrm:?}\nSIB: {:?}\nDisplacement: {displacement:?}", sib.clone());
                 let mod_bits = modrm.0;
                 let reg_bits = modrm.1;
                 let rm_bits = modrm.2;
@@ -653,7 +653,7 @@ pub mod encoding {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 use EffectiveAddress::*;
                 match self {
-                    Register { reg } => { write!(f, "{}", reg) 
+                    Register { reg } => { write!(f, "{reg}") 
                     },
                     Displacement { displacement } => {
                         write!(f, "[ 0x{:08X} ]", displacement)
@@ -661,17 +661,17 @@ pub mod encoding {
                     IndexDisp { index, scale, displacement } => {
                         match scale {
                             Scale::One => {
-                                write!(f, "[ {} + 0x{:08X} ]", index, displacement)
+                                write!(f, "[ {index} + 0x{:08X} ]", displacement)
                             },
                             _=> {
-                                write!(f, "[ {} * {} + 0x{:08X} ]", index, scale, displacement)
+                                write!(f, "[ {index} * {scale} + 0x{:08X} ]", displacement)
                             }
                         }
                     }
                     BaseDisp { base, displacement} => {
                         match displacement {
-                            operands::Displacement::None => { write!(f, "[ {} ]", base) }
-                            _ => { write!(f, "[ {} + 0x{:08X} ]", base, displacement.get_inner()) }
+                            operands::Displacement::None => { write!(f, "[ {base} ]") }
+                            _ => { write!(f, "[ {base} + {displacement} ]") }
                         }
                     }
                     IndexBaseDisp { index, scale, base, displacement } => {
@@ -690,10 +690,10 @@ pub mod encoding {
                             _ => { 
                                 match scale {
                                     Scale::One => {
-                                        write!(f, "[ {index} + {base} + 0x{:08X} ]", displacement.get_inner())
+                                        write!(f, "[ {index} + {base} + {displacement} ]")
                                     },
                                     _ => {
-                                        write!(f, "[ {index} * {scale} + {base} + 0x{:08X} ]", displacement.get_inner())
+                                        write!(f, "[ {index} * {scale} + {base} + {displacement} ]")
                                     }
                                 }
                             }

@@ -174,7 +174,7 @@ static DECODE_RULES: RulesMap = phf_map! {
                ins3!("cmp",      [0x81], ["/7", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),
                ins3!("or",       [0x81], ["/1", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),
                ins3!("sub",      [0x81], ["/5", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),
-               ins3!("xor",      [0x81], ["/6"],                 OpEn::MI, [0b00,0b01,0b10,0b11]),
+               ins3!("xor",      [0x81], ["/6", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),
     ], 
     "0x85" => &[ins3!("test",    [0x85], ["/r"],                 OpEn::MR, [0b00,0b01,0b10,0b11])],
     "0x89" => &[ins3!("mov",     [0x89], ["/r"],                 OpEn::MR, [0b00,0b01,0b10,0b11])],
