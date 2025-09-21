@@ -6,71 +6,38 @@ pub mod files {
     use tracing_test::traced_test;
     use tracing::{info, error, debug};
 
-    use crate::instruction::encoding::{operands::Operand, Sib};
+    use crate::{instruction::encoding::{operands::Operand, Sib}, output::Disassembly};
     #[allow(unused)]
     use crate::{
         output::setup_tracing,
         decode::{
             Bytes, DecodeRule
-        }, instruction::{encoding::operands::Offset, Instruction}, opcodes::DecodeRules, output::Output
+        }, instruction::{encoding::operands::Offset, Instruction}, opcodes::DecodeRules,
     };
     use crate::input::get_bytes;
 
     #[test]
     fn example1() {
         let bytes = include_bytes!("./example1").to_vec();
+        let expected_raw = include_str!("./example1.out");
+        let expected: Vec<char> = expected_raw
+            .chars()
+            .filter(|c|{
+                !(c.is_whitespace() || c.is_control())
+            }).collect();
+
         println!("{bytes:X?}");
         
-        let mut output = Output::new(bytes.len()); // Largest output is one line per byte
-        let pointer = 0; // All streams start at zero
-        let mut offset = Offset(pointer);
+        let output = Disassembly::from(bytes);
 
-        let mut instruction = Bytes::Uknown(bytes[offset.to_pointer()]); // base case is byte is unknown
-
-        while offset.to_pointer() <= bytes.len() {
-            let Ok(rules) = DecodeRules::get(&bytes[offset.to_pointer()])
-                else {
-                    error!("Unexpected OpCode.");
-                    let _ = output.add(instruction.clone());
-                    offset.increment(1 /*byte*/);
-                    continue;
-                }; 
-            let instruction_idx = offset.to_pointer();
-
-            for rule in rules { // We dont know which rule will decode into an instruction
-                instruction = match rule.modrm_required() {
-                    true => { 
-                        todo!()
-                    },
-                    false => { // know length a priori
-                        let (length, _final) = rule.len();
-
-                        let Some(prospective_bytes) = bytes.get(instruction_idx.. instruction_idx + length)
-                            else { 
-                                error!("Attempted to grab more bytes than remain");
-                                continue
-                            };
-
-                        let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
-
-                        if decode_attempt.is_ok() {
-                            let instruction = decode_attempt.expect("Ok due to conditional");
-                            offset.increment(instruction.length() as u32);
-                            instruction
-                        }
-                        else { 
-                            info!("Decode unsuccessful");
-                            continue
-                        }
-                    },
-                }
-            }
-
-        }
         
+        println!("Output:\n{output}");
+        println!("\nExpected:\n{expected_raw}");
+        let output: Vec<char> = format!("{output}")
+            .chars().filter(|c|!(c.is_whitespace() || c.is_control())).collect();
 
-        print!("{output}");
-        todo!()
+        // Just test raw characters independent of spacing and newlines
+        output.iter().zip(expected.iter()).for_each(|(a,b)| {println!("{a} {b}"); assert!( a == b);});
     }
 
 }
@@ -81,108 +48,109 @@ pub mod compendium {
     use tracing_test::traced_test;
     use tracing::{info, error, debug};
 
-    use crate::instruction::encoding::{operands::Operand, Sib};
+    use crate::{instruction::encoding::{operands::Operand, Sib}, output::Disassembly};
     #[allow(unused)]
     use crate::{
         output::setup_tracing,
         decode::{
             Bytes, DecodeRule
-        }, instruction::{encoding::operands::Offset, Instruction}, opcodes::DecodeRules, output::Output
+        }, instruction::{encoding::operands::Offset, Instruction}, opcodes::DecodeRules,
     };
 
     #[traced_test]
     fn check(expected: String, bytes: &[u8]) {
         assert!(bytes.len() >= 1);
 
-        let mut output = Output::new(10);
-        let offset = Offset(0); // All test instructions start at Address Zero
-        let Ok(rules) = DecodeRules::get(&bytes[0]) 
-            else { error!("Encountered unexpected Opcode"); panic!() };
+        //let mut output = Disassembly::new(10);
+        //let offset = Offset(0); // All test instructions start at Address Zero
+        //let Ok(rules) = DecodeRules::get(&bytes[0]) 
+            //else { error!("Encountered unexpected Opcode"); panic!() };
 
-        info!("");
-        info!("");
-        info!("Checking\n:{expected}");
-        info!("----------------------------------------");
+        //info!("");
+        //info!("");
+        //info!("Checking\n:{expected}");
+        //info!("----------------------------------------");
         
-        for rule in rules { // We dont know which rule will decode into an instruction
-            info!("");
-            info!("Attempting Decode using rule: {rule:?}");
-            info!("----------------------------------------");
+        //for rule in rules { // We dont know which rule will decode into an instruction
+            //info!("");
+            //info!("Attempting Decode using rule: {rule:?}");
+            //info!("----------------------------------------");
 
-            let (mut length, _fixed) = rule.len();
-            debug!("Rule reported opcode length: {length}");
+            //let (mut length, _fixed) = rule.len();
+            //debug!("Rule reported opcode length: {length}");
 
-            let base = offset.0 as usize;
+            //let base = offset.0 as usize;
 
-            let instruction = if rule.modrm_required() { // We must decode bytes beyond the first to determine length
-                debug!("ModRM required for instruction decode");
+            //let instruction = if rule.modrm_required() { // We must decode bytes beyond the first to determine length
+                //debug!("ModRM required for instruction decode");
 
-                let modrm_location = rule.op_code().len();
-                let Ok(modrm) = rule.modrm_byte(bytes[modrm_location]) else { continue };
-                debug!("Got ModRM Byte: 0x{:X} = {modrm:?}", modrm.as_byte());
+                //let modrm_location = rule.op_code().len();
+                //let Ok(modrm) = rule.modrm_byte(bytes[modrm_location]) else { continue };
+                //debug!("Got ModRM Byte: 0x{:X} = {modrm:?}", modrm.as_byte());
 
-                let sib = if modrm.precedes_sib_byte() {
-                    debug!("Attempting decode of SIB byte from 0x{:X}", bytes[modrm_location+1]);
-                    let sib = Sib::try_from(bytes[modrm_location+1]);
-                    if sib.is_err() { continue; } 
-                    else { sib.ok() }
-                } else { None };
+                //let sib = if modrm.precedes_sib_byte() {
+                    //debug!("Attempting decode of SIB byte from 0x{:X}", bytes[modrm_location+1]);
+                    //let sib = Sib::try_from(bytes[modrm_location+1]);
+                    //if sib.is_err() { continue; } 
+                    //else { sib.ok() }
+                //} else { None };
 
-                let Ok(bytes_remaining) = modrm.bytes_remaining(sib)
-                    else { continue; };
-                length += bytes_remaining;
+                //let Ok(bytes_remaining) = modrm.bytes_remaining(sib)
+                    //else { continue; };
+                //length += bytes_remaining;
 
-                debug!("Instuction length updated: {length}");
-                debug!("Grabbing byte range {:?} for decode attempt", (base..base+length));
+                //debug!("Instuction length updated: {length}");
+                //debug!("Grabbing byte range {:?} for decode attempt", (base..base+length));
 
-                let Some(prospective_bytes) = bytes.get(base.. base + length)
-                       else { error!("Test should have enough bytes for decoding instruction"); panic!() };
+                //let Some(prospective_bytes) = bytes.get(base.. base + length)
+                       //else { error!("Test should have enough bytes for decoding instruction"); panic!() };
 
-                let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
+                //let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
 
-                let instruction = if decode_attempt.is_ok() { decode_attempt.expect("Ok due to conditional") }
-                    else { info!("Decode unsuccessful"); continue };
+                //let instruction = if decode_attempt.is_ok() { decode_attempt.expect("Ok due to conditional") }
+                    //else { info!("Decode unsuccessful"); continue };
                 
-                instruction
-            } 
-            else { // We can know the length of the instruction _a priori_
+                //instruction
+            //} 
+            //else { // We can know the length of the instruction _a priori_
 
-                debug!("rule reported byte length: {length}");
+                //debug!("Rule reported true byte length: {length}");
 
-                let Some(prospective_bytes) = bytes.get(0..length)
-                    else { error!("Test should have enough bytes for decoding instruction"); panic!() };
+                //let Some(prospective_bytes) = bytes.get(0..length)
+                    //else { error!("Test should have enough bytes for decoding instruction"); panic!() };
 
-                let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
+                //let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
 
-                let instruction = if decode_attempt.is_ok() { decode_attempt.expect("Ok due to conditional") }
-                    else { info!("Decode unsuccessful"); continue };
+                //let instruction = if decode_attempt.is_ok() { decode_attempt.expect("Ok due to conditional") }
+                    //else { info!("Decode unsuccessful"); continue };
 
-                instruction
-            };
+                //instruction
+            //};
 
-            info!("Instruction\n:{instruction:?}");
+            //info!("Instruction\n:{instruction:?}");
 
-            if instruction.decoded_successfully() {
-                info!("Decoded Instruction\n:{instruction:?}");
-                output.add(instruction.clone())
-                    .expect("This manually decoded instruction should be valid");
-                if rule.can_make_label() {
-                        let instruction = instruction
-                            .get_instruction().expect("Should be a valid instruction");
+            //if instruction.decoded_successfully() {
+                //info!("Decoded Instruction\n:{instruction:?}");
+                //output.add(instruction.clone())
+                    //.expect("This manually decoded instruction should be valid");
+                //if rule.can_make_label() {
+                        //let instruction = instruction
+                            //.get_instruction().expect("Should be a valid instruction");
 
-                    let has_label_operand = instruction.operands.iter().any(|op| matches!(op, Operand::Label(_)));
+                    //let has_label_operand = instruction.operands.iter().any(|op| matches!(op, Operand::Label(_)));
 
-                    if has_label_operand {
-                        let label = instruction
-                            .get_displacement_offset().expect("Should have label");
+                    //if has_label_operand {
+                        //let label = instruction
+                            //.get_displacement_offset().expect("Should have label");
 
-                        let _ = output.label(label); // Dont worry about the result in a test. We'll
-                                                     // regularly add labels "beyond" range
-                    }
-                }
-                break; 
-            }
-        }
+                        //let _ = output.label(label); // Dont worry about the result in a test. We'll
+                                                     //// regularly add labels "beyond" range
+                    //}
+                //}
+                //break; 
+            //}
+        //}
+        let output = Disassembly::from(bytes.to_vec());
         assert_eq!(output.to_string(), expected);
     }
 
@@ -225,7 +193,7 @@ pub mod compendium {
     #[test]
     fn displacement() {
         let mapping: Vec<(&str, &[u8])> = vec![
-            // Output from nasm and objdump as baseline for test.
+            // Disassembly from nasm and objdump as baseline for test.
             //0:   74 0f                   je     0x11
             ("00000000: 74 0F     jz offset_00000011h",        &[0x74, 0x0F]),
 
@@ -366,6 +334,18 @@ pub mod compendium {
 
             ("00000000: 69 1C C5 DD CC BB AA 44 33 22 11     imul ebx, [ eax * 8 + 0xAABBCCDD ], 0x11223344",
              &[0x69, 0x1C, 0xC5, 0xDD, 0xCC, 0xBB, 0xAA, 0x44, 0x33, 0x22, 0x11]),
+        ];
+        mapping.iter()
+            .for_each(|(s,b)| { check(s.to_string(),b); });
+    }
+
+    #[test]
+    fn misc_instructions() {
+        let mapping: Vec<(&str, &[u8])> = vec![
+            ("00000000: B8 44 43 42 41     mov eax, 0x41424344",
+             &[0xB8, 0x44, 0x43, 0x42,0x41]),
+            ("00000000: 8B 95 08 00 00 00     mov edx, [ ebp + 0x00000008 ]",
+             &[0x8B, 0x95, 0x08, 0x00, 0x00, 0x00])
         ];
         mapping.iter()
             .for_each(|(s,b)| { check(s.to_string(),b); });

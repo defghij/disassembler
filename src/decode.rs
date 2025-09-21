@@ -516,8 +516,12 @@ impl Bytes {
             Ok(Immediate::Imm8(imm.to_vec()))
         } else 
         if extensions.contains(&Extension::IW) { 
-            error!("Extension for Immediate Word is not implemented"); 
-            return Err(DecodeError::DecodeFailure);
+            let Some(imm) = bytes.get(idx.. idx + 2) 
+                else {
+                    error!("Attempted to grab more bytes than where handed to function for instruction decode");
+                    return Err(DecodeError::InvalidLength);
+                };
+            Ok(Immediate::Imm16(imm.to_vec()))
         } else
         if extensions.contains(&Extension::ID) { 
             let Some(imm) = bytes.get(idx.. idx + 4) 
