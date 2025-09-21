@@ -266,31 +266,32 @@ pub mod compendium {
             ("00000000: 3B FE     cmp edi, esi",
              &[0x3B, 0xFE]),
 
-            ("00000000:03 8F DD CC BB AA     add ecx, [ edi + 0xAABBCCDD ]",
+            ("00000000: 03 8F DD CC BB AA     add ecx, [ edi + 0xAABBCCDD ]",
              &[0x03, 0x8F, 0xDD, 0xCC, 0xBB, 0xAA]),
 
             ("00000000: 8B BC B3 DD CC BB AA     mov edi, [ esi * 4 + ebx + 0xAABBCCDD ]",
              &[0x8B, 0xBC, 0xB3, 0xDD, 0xCC, 0xBB, 0xAA]),
              
-            ("00000000: 3B 04 9D DD CC BB AA    cmp eax, [ ebx * 4 + 0xAABBCCDD ]",
+            ("00000000: 3B 04 9D DD CC BB AA     cmp eax, [ ebx * 4 + 0xAABBCCDD ]",
              &[0x3B, 0x04, 0x9D, 0xDD, 0xCC, 0xBB, 0xAA]),
         ];
         mapping.iter()
             .for_each(|(s,b)| { check(s.to_string(),b); });
     }
 
-    //#[test]
-    //fn rmi_regrm_and_immediate() {
-        //let mapping: Vec<(&str, &[u8])> = vec![
-            //("imul eax, edx, 0x10", 
-             //&[0x6B, 0xC2, 0x10]),
+    #[test]
+    fn rmi_regrm_and_immediate() {
+        let mapping: Vec<(&str, &[u8])> = vec![
+            ("00000000: 6B C2 10     imul eax, edx, 0x10", 
+             &[0x6B, 0xC2, 0x10]),
 
-            //("imul edi, [ esi * 8 + eax + 0xAABBCCDD ], 0x11223344",
-             //&[0x69, 0xBC, 0xF0, 0xDD, 0xCC, 0xBB, 0xAA, 0x44, 0x33, 0x22, 0x11]), 
+            ("00000000: 69 BC F0 DD CC BB AA 44 33 22 11     imul edi, [ esi * 8 + eax + 0xAABBCCDD ], 0x11223344",
+             &[0x69, 0xBC, 0xF0, 0xDD, 0xCC, 0xBB, 0xAA, 0x44, 0x33, 0x22, 0x11]), 
 
-            //("imul ebx, [ eax * 8 + 0xAABBCCDD ], 0x11223344",
-             //&[0x69, 0x1C, 0xC5, 0xDD, 0xCC, 0xBB, 0xAA, 0x44, 0x33, 0x22, 0x11]),
-        //];
-        //check_instructions(mapping);
-    //}
+            ("00000000: 69 1C C5 DD CC BB AA 44 33 22 11     imul ebx, [ eax * 8 + 0xAABBCCDD ], 0x11223344",
+             &[0x69, 0x1C, 0xC5, 0xDD, 0xCC, 0xBB, 0xAA, 0x44, 0x33, 0x22, 0x11]),
+        ];
+        mapping.iter()
+            .for_each(|(s,b)| { check(s.to_string(),b); });
+    }
 }

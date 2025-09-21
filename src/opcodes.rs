@@ -167,6 +167,8 @@ static DECODE_RULES: RulesMap = phf_map! {
 
    "0x68" => &[ins1!("push",     [0x68], ["id"],                 OpEn::I                        )],
    "0x6A" => &[ins1!("push",     [0x6A], ["ib"],                 OpEn::I                        )],
+   "0x6B" => &[ins3!("imul",     [0x6B], ["/r", "ib"],           OpEn::RMI, [0b00,0b01,0b10,0b11])],
+   "0x69" => &[ins3!("imul",     [0x69], ["/r", "id"],           OpEn::RMI, [0b00,0b01,0b10,0b11])],
    "0x74" => &[ins1!("jz",       [0x74], ["cb", "rel8"],         OpEn::D                        )],
    "0x75" => &[ins1!("jnz",      [0x75], ["cb", "rel8"],         OpEn::D                        )],
    "0x81" => &[ins3!("add",      [0x81], ["/0", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),

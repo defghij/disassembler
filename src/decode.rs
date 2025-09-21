@@ -325,7 +325,7 @@ impl Bytes {
                     return Err(DecodeError::InvalidModRM);
                 };
                 
-                // First instruction is Memory
+                // First operand is Memory
                 let operand = Bytes::decode_memory(bytes, disp_idx, modrm, sib)?;
                 instruction_length += operand.len();
                 instruction.add(operand);
@@ -343,7 +343,72 @@ impl Bytes {
                     instruction,
                 }
             },
-            OpEn::RM => { todo!() },
+            OpEn::RM => { 
+
+                let Some(modrm) = modrm else { 
+                    error!("This OpEn requires a MODRM byte but found None");
+                    return Err(DecodeError::InvalidModRM);
+                };
+
+                // First operand is Register
+                if extensions.is_some_and(|e| e.contains(&Extension::SR)) {
+                    instruction.add(Operand::Register(Register::from(modrm.1)));
+                } else {
+                    error!("Operand Encoding expected an extension `/r` but found none");
+                    return Err(DecodeError::InvalidOpCodeExtension);
+                }
+                
+                // Second operand is Memory
+                let operand = Bytes::decode_memory(bytes, disp_idx, modrm, sib)?;
+                instruction_length += operand.len();
+                instruction.add(operand);
+
+                Bytes::Decoded {
+                    bytes: bytes[..instruction_length].to_vec(),
+                    instruction,
+                }
+            },
+            OpEn::RMI => {
+                let Some(modrm) = modrm else { 
+                    error!("This OpEn requires a MODRM byte but found None");
+                    return Err(DecodeError::InvalidModRM);
+                };
+
+                // First operand is Register
+                if extensions.as_ref().is_some_and(|e| e.contains(&Extension::SR)) {
+                    instruction.add(Operand::Register(Register::from(modrm.1)));
+                } else {
+                    error!("Operand Encoding expected an extension `/r` but found none");
+                    return Err(DecodeError::InvalidOpCodeExtension);
+                }
+                
+                // Second operand is Memory
+                let operand = Bytes::decode_memory(bytes, disp_idx, modrm, sib)?;
+                instruction_length += operand.len();
+                instruction.add(operand);
+
+
+                // Take care of the I part of RMI
+                ///////////////////////////////////////////////
+                imm_idx = instruction_length;
+                debug!("imm_idx: {imm_idx}");
+                
+                // Only instruction with this encoding is `imul`
+                if !extensions.as_ref().is_some_and(|exts| exts.len() == 2) { 
+                    error!("Incorrect number of OpCode Extensions. Expected 2");
+                    return Err(DecodeError::InvalidOpCodeExtension); 
+                }
+                let extensions = extensions.expect("Is some due to conditional above");
+
+                let imm = Bytes::decode_immediate(bytes, imm_idx, extensions)?;
+                instruction_length += imm.len();
+                instruction.add(Operand::Immediate(imm));
+
+                Bytes::Decoded {
+                    bytes: bytes[..instruction_length].to_vec(),
+                    instruction,
+                }
+            },
             OpEn::NP => { todo!() },
             OpEn::FD => { todo!() },
             OpEn::TD => { todo!() },
@@ -540,7 +605,7 @@ impl DecodeRule {
                 if self.modrm_required() { bytes += 1 }
                 (op_code.len() + bytes, true)
             },
-            OpEn::M | OpEn::M1 | OpEn::MI | OpEn::MR | OpEn::RM => {
+            OpEn::M | OpEn::M1 | OpEn::MI | OpEn::MR | OpEn::RM | OpEn::RMI => {
                 let extensions = extensions.as_ref().expect("All Rules with an OpEn::M encoding should require an extension");
                 let mut bytes = extensions.iter()
                     .filter(|ext| ext.operand_length().is_some())

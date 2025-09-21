@@ -115,13 +115,13 @@ pub enum OpEn {
     // Treat Moffs as Imm32
     FD, TD,
     // Part of Tests, not assignment
-    M1
+    M1, RMI
 } 
 #[allow(unused)]
 impl OpEn {
     pub fn modrm_required(&self) -> bool {
         match self {
-            OpEn::RM | OpEn::MR | OpEn::MI | OpEn::M | OpEn::M1 => true,
+            OpEn::RM | OpEn::MR | OpEn::MI | OpEn::M | OpEn::M1 | OpEn::RMI => true,
             _ => false,
         }
     }
@@ -134,11 +134,12 @@ impl OpEn {
             OpEn::M1 => 2,
             OpEn::M  => 1,
             OpEn::I  => 1,
-            OpEn::NP => unimplemented!("Not part of the assignment"),
             OpEn::ZO => 0,
             OpEn::O  => 0,
             OpEn::OI => 2,
             OpEn::D  => 1 ,
+            OpEn::RMI  => 3,
+            OpEn::NP => unimplemented!("Not part of the assignment"),
             OpEn::FD => unimplemented!("Not part of the assignment"),
             OpEn::TD => unimplemented!("Not part of the assignment"),
         }
