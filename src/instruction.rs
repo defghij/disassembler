@@ -697,6 +697,7 @@ pub mod encoding {
         #[allow(unused)]
         impl Offset {
             pub fn increment(&mut self, bytes: u32) { self.0 += bytes; }
+            pub fn to_pointer(&self) -> usize { self.0 as usize }
         }
         impl From<Displacement> for Offset {
             fn from(value: Displacement) -> Self {

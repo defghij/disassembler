@@ -26,9 +26,12 @@ fn path_from_cli() -> PathBuf {
     path
 }
 
-
-pub fn get_bytes() -> Result<Vec<u8>, std::io::Error> {
+pub fn read_bytes_from_cli() -> Result<Vec<u8>, std::io::Error> {
     let path = path_from_cli();
+    get_bytes(path)
+}
+
+pub fn get_bytes(path: PathBuf) -> Result<Vec<u8>, std::io::Error> {
     let bytes = std::fs::read(&path)?;
 
     println!("Read {} bytes from {}", 

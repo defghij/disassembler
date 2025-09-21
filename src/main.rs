@@ -12,7 +12,7 @@ use output::setup_tracing;
 fn main() {
     setup_tracing(LevelFilter::OFF);
 
-    let result = input::get_bytes();
+    let result = input::read_bytes_from_cli();
     if result.is_err() {
         error!("Unable to acquire bytes from file: {:?}", result.err());
         return;

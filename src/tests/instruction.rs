@@ -1,4 +1,80 @@
 
+#[cfg(test)]
+pub mod files {
+    use std::path::Path;
+
+    use tracing_test::traced_test;
+    use tracing::{info, error, debug};
+
+    use crate::instruction::encoding::{operands::Operand, Sib};
+    #[allow(unused)]
+    use crate::{
+        output::setup_tracing,
+        decode::{
+            Bytes, DecodeRule
+        }, instruction::{encoding::operands::Offset, Instruction}, opcodes::DecodeRules, output::Output
+    };
+    use crate::input::get_bytes;
+
+    #[test]
+    fn example1() {
+        let bytes = include_bytes!("./example1").to_vec();
+        println!("{bytes:X?}");
+        
+        let mut output = Output::new(bytes.len()); // Largest output is one line per byte
+        let pointer = 0; // All streams start at zero
+        let mut offset = Offset(pointer);
+
+        let mut instruction = Bytes::Uknown(bytes[offset.to_pointer()]); // base case is byte is unknown
+
+        while offset.to_pointer() <= bytes.len() {
+            let Ok(rules) = DecodeRules::get(&bytes[offset.to_pointer()])
+                else {
+                    error!("Unexpected OpCode.");
+                    let _ = output.add(instruction.clone());
+                    offset.increment(1 /*byte*/);
+                    continue;
+                }; 
+            let instruction_idx = offset.to_pointer();
+
+            for rule in rules { // We dont know which rule will decode into an instruction
+                instruction = match rule.modrm_required() {
+                    true => { 
+                        todo!()
+                    },
+                    false => { // know length a priori
+                        let (length, _final) = rule.len();
+
+                        let Some(prospective_bytes) = bytes.get(instruction_idx.. instruction_idx + length)
+                            else { 
+                                error!("Attempted to grab more bytes than remain");
+                                continue
+                            };
+
+                        let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
+
+                        if decode_attempt.is_ok() {
+                            let instruction = decode_attempt.expect("Ok due to conditional");
+                            offset.increment(instruction.length() as u32);
+                            instruction
+                        }
+                        else { 
+                            info!("Decode unsuccessful");
+                            continue
+                        }
+                    },
+                }
+            }
+
+        }
+        
+
+        print!("{output}");
+        todo!()
+    }
+
+}
+ 
 //This contains tests from the course 
 #[cfg(test)]
 pub mod compendium {
