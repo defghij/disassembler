@@ -103,16 +103,33 @@ impl Bytes {
         let (mnemonic, prefix, op_code, extensions, op_encode, addr_modes) = rule.separate();
 
         let opcode: u8 = op_code.0[0];
-        let instruction_length = bytes.len();
         let opcode_length = rule.op_code().len();
+        let mut modrm_idx = 0;
+        let mut sib_idx   = 0;
+        let mut disp_idx  = 0;
+        let mut disp_len  = 0;
+        let mut instruction_length = opcode_length;
 
-        // Validate ModRM characteristics if we require one.
-        if rule.modrm_required() && instruction_length == 1 { return Err(DecodeError::DecodeFailure); }
         let modrm = if rule.modrm_required() {
-            let modrm = rule.modrm_byte(bytes[opcode_length])?;
+            modrm_idx = instruction_length; // zero indexing
+            instruction_length += 1;
+            let modrm = rule.modrm_byte(bytes[modrm_idx])?;
             rule.validate_addressing_mode(modrm)?;
             Some(modrm)
         } else { None };
+
+        let sib = if modrm.is_some_and(|m| m.precedes_sib_byte()) {
+            sib_idx = instruction_length; // zero indexing
+            instruction_length += 1;
+            let sib = Sib::sib(bytes, sib_idx)?;
+            Some(sib)
+        } else { None };
+
+        disp_idx = instruction_length;
+
+        
+
+        //let bytes_remaining = modrm.bytes_remaining(sib);
 
         let mut instruction = Instruction::new(mnemonic);
 
@@ -166,11 +183,13 @@ impl Bytes {
                             return Err(DecodeError::InvalidLength);
                         };
                     let imm = Immediate::Imm8(imm.to_vec());
+                    instruction_length += imm.len();
                     instruction.add(Operand::Immediate(imm));
                 }
 
                 if extensions.contains(&Extension::IW) { 
-                    unimplemented!("Opcode Extension for immediate word is not implemented")
+                    error!("Extension for Immediate Word is not implemented"); 
+                    return Err(DecodeError::DecodeFailure);
                 }
 
                 if extensions.contains(&Extension::ID) { 
@@ -180,6 +199,7 @@ impl Bytes {
                             return Err(DecodeError::InvalidLength);
                         };
                     let imm = Immediate::Imm32(imm.to_vec());
+                    instruction_length += imm.len();
                     instruction.add(Operand::Immediate(imm));
                 }
 
@@ -189,10 +209,11 @@ impl Bytes {
                 }
             }
             OpEn::D  => {
-                let width = instruction_length - opcode_length;
+                let width = rule.len().0 - opcode_length;
                 debug!("Displacement Byte Width: {width}");
 
                 let displacement = Displacement::from_relative(bytes, location, opcode_length, width)?;
+                instruction_length += displacement.len();
 
                 instruction.add(Operand::Displacement(displacement));
 
@@ -216,6 +237,7 @@ impl Bytes {
 
                 if extensions.contains(&Extension::IB) { 
                     let imm = Immediate::Imm8(bytes[1..2].to_vec());
+                    instruction_length += imm.len();
                     instruction.add(Operand::Immediate(imm));
                 }
 
@@ -226,6 +248,7 @@ impl Bytes {
 
                 if extensions.contains(&Extension::ID) { 
                     let imm = Immediate::Imm32(bytes[1..5].to_vec());
+                    instruction_length += imm.len();
                     instruction.add(Operand::Immediate(imm));
                 }
 
@@ -234,11 +257,13 @@ impl Bytes {
                     instruction: instruction.clone()
                 }
             }
-            OpEn::M => { 
+            OpEn::M  => { 
                 debug!("OpEn::M");
-                let modrm = modrm.expect("ModRM should already be validated");
+                let Some(modrm) = modrm else { 
+                    error!("This OpEn requires a MODRM byte but found None");
+                    return Err(DecodeError::InvalidModRM);
+                };
                 
-
                 // All declared OpEn::M `DecodeRules` have an extension.
                 let Some(extensions) = extensions 
                 else { 
@@ -252,22 +277,26 @@ impl Bytes {
                         debug!("Mod bits: {:?}", modrm.0);
                         match modrm.2 {
                             Register::ESP => { // [--][--]
+                                let Some(sib) = sib 
+                                    else {
+                                        error!("Required SIB byte not found");
+                                        return Err(DecodeError::InvalidSib);
+                                    };
                                 debug!("RM bits: {:?}", modrm.2);
-                                let base: usize = opcode_length + 1 + 1 /*modrm + sib*/;
 
-                                let sib = Sib::sib(bytes, base)?;
                                 let eaddr  = if sib.base() == Register::EBP {
-                                        let displacement = Displacement::disp32(bytes, base)?;
-                                        EffectiveAddress::from(modrm, sib, displacement)?
-                                    } else { EffectiveAddress::from(modrm, sib, Displacement::None)? };
+                                        let displacement = Displacement::disp32(bytes, disp_idx)?;
+                                        instruction_length += displacement.len();
+                                        EffectiveAddress::from(modrm, Some(sib), displacement)?
+                                    } else { EffectiveAddress::from(modrm, Some(sib), Displacement::None)? };
                                 instruction.add(Operand::EffectiveAddress(eaddr));
 
                             },
                             Register::EBP => { 
                                 debug!("RM bits: {:?}", modrm.2);
-                                let base: usize = opcode_length + 1/*modrm byte*/;
 
-                                let displacement = Displacement::disp32(bytes,base)?;
+                                let displacement = Displacement::disp32(bytes, disp_idx)?;
+                                instruction_length += displacement.len();
 
                                 let displacement = EffectiveAddress::displacement(displacement.into());
 
@@ -287,19 +316,17 @@ impl Bytes {
                         match modrm.2 {
                             Register::ESP => { // [--][--]+disp8
                                 debug!("RM bits: {:?}", modrm.2);
-                                unimplemented!("SIB byte not implemented for this address mode") 
+                                let displacement = Displacement::disp8(bytes, disp_idx)?;
+                                instruction_length += displacement.len();
+                                let effective_address = EffectiveAddress::from(modrm, sib, displacement)?;
+                                instruction.add(Operand::EffectiveAddress(effective_address));
                             },
                             _ => { 
                                 debug!("RM bits: {:?}", modrm.2);
-                                let base: usize = opcode_length + 1/*modrm byte*/;
 
-                                if bytes.len() < base + 1 /*displacement*/ { 
-                                    error!("Byte length incorrect for instruction"); 
-                                    return Err(DecodeError::InvalidLength); 
-                                }
-
-                                let d = Displacement::disp8(bytes, base)?;
-                                let d: u32 = d.into();
+                                let displacement = Displacement::disp8(bytes, disp_idx)?;
+                                instruction_length += displacement.len();
+                                let d: u32 = displacement.into();
 
                                 let displacement = EffectiveAddress::base_d8(modrm.1, d as u8);
 
@@ -314,11 +341,9 @@ impl Bytes {
                         match modrm.2 {
                             Register::ESP => { // [--][--]+disp32
                                 debug!("RM bits: {:?}", modrm.2);
-                                let base: usize = opcode_length + 1 + 1 /*modrm + sib*/;
-                                 
-                                let sib = Sib::sib(bytes, base)?;
 
-                                let displacement = Displacement::disp32(bytes, base)?;
+                                let displacement = Displacement::disp32(bytes, disp_idx)?;
+                                instruction_length += displacement.len();
 
                                 let eaddr = EffectiveAddress::from(modrm, sib, displacement)?;
 
@@ -330,7 +355,8 @@ impl Bytes {
 
                                 if bytes.len() < base + 4 { return Err(DecodeError::InvalidLength); }
 
-                                let displacement = Displacement::disp32(bytes, base)?;
+                                let displacement = Displacement::disp32(bytes, disp_idx)?;
+                                instruction_length += displacement.len();
 
                                 let eaddr = EffectiveAddress::base_d32(modrm.1, displacement.into());
 
@@ -345,16 +371,52 @@ impl Bytes {
                 }
 
                 Bytes::Decoded {
-                    bytes: bytes.to_vec(),
+                    bytes: bytes[..instruction_length].to_vec(),
                     instruction: instruction.clone()
                 }
             },
-            OpEn::RM => todo!(),
-            OpEn::MR => todo!(),
-            OpEn::MI => todo!(),
-            OpEn::NP => todo!(),
-            OpEn::FD => todo!(),
-            OpEn::TD => todo!(),
+            OpEn::M1 => {
+                debug!("OpEn::M");
+                let Some(modrm) = modrm else { 
+                    error!("This OpEn requires a MODRM byte but found None");
+                    return Err(DecodeError::InvalidModRM);
+                };
+                
+                let mut displacement = Displacement::None;
+
+                if sib.as_ref().is_some_and(|s| s.base() == Register::EBP && modrm.0 == ModBits::OO ){
+                    displacement = Displacement::disp32(bytes, disp_idx)?;
+                } else 
+                if modrm.uses_displacement() {
+                    displacement = match modrm.0 {
+                        ModBits::OO | ModBits::IO => Displacement::disp32(bytes, disp_idx)?,
+                        ModBits::OI => Displacement::disp8(bytes, disp_idx)?,
+                        _ => { Displacement::None }
+                    };
+                }
+                else {
+                    displacement = Displacement::None;
+                };
+
+                instruction_length += displacement.len();
+
+                let effective_address = EffectiveAddress::from(modrm, sib, displacement)?;
+
+                instruction.add(Operand::EffectiveAddress(effective_address));
+                instruction.add(Operand::Immediate(Immediate::Imm8(vec![1])));
+
+
+                Bytes::Decoded {
+                    bytes: bytes[..instruction_length].to_vec(),
+                    instruction,
+                }
+            },
+            OpEn::MI => { todo!() },
+            OpEn::RM => { todo!() },
+            OpEn::MR => { todo!() },
+            OpEn::NP => { todo!() },
+            OpEn::FD => { todo!() },
+            OpEn::TD => { todo!() },
         };
 
         Ok(instruction)
@@ -436,7 +498,7 @@ impl DecodeRule {
             OpEn::RM => unimplemented!("`len` not implemented for this Operand Encoding"),
             OpEn::MR => unimplemented!("`len` not implemented for this Operand Encoding"),
             OpEn::MI => unimplemented!("`len` not implemented for this Operand Encoding"),
-            OpEn::M => {
+            OpEn::M | OpEn::M1 => {
                 let extensions = extensions.as_ref().expect("All Rules with an OpEn::M encoding should require an extension");
                 let mut bytes = extensions.iter()
                     .filter(|ext| ext.operand_length().is_some())

@@ -209,20 +209,21 @@ pub mod compendium {
             .for_each(|(s,b)| { check(s.to_string(),b); });
     }
 
-    //#[test]
-    //fn m1_rm_and_one() {                                                     8
-        //let mapping: Vec<(&str, &[u8])> = vec![
-            //("sar [ ebx + 0x10 ], 1",
-             //&[0xD1, 0x7B, 0x10]),
+    #[test]
+    fn m1_rm_and_one() {
+        let mapping: Vec<(&str, &[u8])> = vec![
+            ("00000000: D1 7B 10     sar [ ebx + 0x00000010 ], 0x01",
+             &[0xD1, 0x7B, 0x10]),
 
-            //("sal [ edx * 2 + esi ], 1",
-             //&[0xD1, 0x24, 0x56]),
+            ("00000000: D1 24 56     sal [ edx * 2 + esi ], 0x01",
+             &[0xD1, 0x24, 0x56]),
 
-            //("shr [ edi * 2 + 0xAABBCCDD ], 1",
-             //&[0xD1, 0x2C, 0x7D, 0xDD, 0xCC, 0xBB, 0xAA]),
-        //];
-        //check_instructions(mapping);
-    //}
+            ("00000000: D1 2C 7D DD CC BB AA     shr [ edi * 2 + 0xAABBCCDD ], 0x01",
+             &[0xD1, 0x2C, 0x7D, 0xDD, 0xCC, 0xBB, 0xAA]),
+        ];
+        mapping.iter()
+            .for_each(|(s,b)| { check(s.to_string(),b); });
+    }
 
     //#[test]
     //fn mi_rm_and_immediate() {

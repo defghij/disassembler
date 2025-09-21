@@ -112,15 +112,16 @@ impl Display for Instruction {
 pub enum OpEn {
     RM, MR, MI,  M, I, 
     NP, ZO,  O, OI, D,
-    
-    /// Treat Moffs as Imm32
+    // Treat Moffs as Imm32
     FD, TD,
+    // Part of Tests, not assignment
+    M1
 } 
 #[allow(unused)]
 impl OpEn {
     pub fn modrm_required(&self) -> bool {
         match self {
-            OpEn::RM | OpEn::MR | OpEn::MI | OpEn::M => true,
+            OpEn::RM | OpEn::MR | OpEn::MI | OpEn::M | OpEn::M1 => true,
             _ => false,
         }
     }
@@ -130,6 +131,7 @@ impl OpEn {
             OpEn::RM => unimplemented!("Not yet implemented"),
             OpEn::MR => unimplemented!("Not yet implemented"),
             OpEn::MI => unimplemented!("Not yet implemented"),
+            OpEn::M1 => 2,
             OpEn::M  => 1,
             OpEn::I  => 1,
             OpEn::NP => unimplemented!("Not part of the assignment"),
@@ -350,8 +352,8 @@ pub mod encoding {
             else { 4 }
         }
 
-        pub fn sib(bytes: &[u8], base: usize) -> Result<Sib, DecodeError> {
-            let Some(sib) = bytes.get(base - 1) 
+        pub fn sib(bytes: &[u8], idx: usize) -> Result<Sib, DecodeError> {
+            let Some(sib) = bytes.get(idx) 
                 else { 
                     error!("Unable to create Sib. Bytes length incorrect");
                     return Err(DecodeError::InvalidLength);
@@ -404,11 +406,8 @@ pub mod encoding {
         #[allow(unused)]
         impl EffectiveAddress {
             
-            pub fn from(modrm: ModRM, sib: Sib, displacement: Displacement) -> Result<EffectiveAddress, DecodeError> {
+            pub fn from(modrm: ModRM, sib: Option<Sib>, displacement: Displacement) -> Result<EffectiveAddress, DecodeError> {
                 debug!("\nMODRM: {modrm:?}\nSIB: {:?}\nDisplacement: {displacement}", sib.clone());
-                let scale = sib.0;
-                let index = sib.1;
-                let base = sib.2;
                 let mod_bits = modrm.0;
                 let reg_bits = modrm.1;
                 let rm_bits = modrm.2;
@@ -429,6 +428,15 @@ pub mod encoding {
                 // - [--][--] + disp8
                 // - [--][--] + disp32
                 if modrm.precedes_sib_byte() {
+                    let Some(sib) = sib else {
+                        error!("Panic! MODRM indicates a SIB Byte but none found!");
+                        return Err(DecodeError::InvalidSib);
+                    };
+
+                    let scale = sib.0;
+                    let index = sib.1;
+                    let base = sib.2;
+
                     let use_base_register = !(base == Register::EBP && mod_bits == ModBits::OO);
                     let displacement_used = !(scale == Scale::One && !use_base_register) &&
                         modrm.uses_displacement();
@@ -1025,7 +1033,7 @@ pub mod encoding {
 
             fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
                 let displacement = match value.len() {
-                    1 => { Displacement::Rel8(value[0]) },
+                    1 => { Displacement::Abs8(value[0]) },
                     2 => {
                         let Ok(displacement) = <[u8;2]>::try_from(value) 
                         else { return Err(DecodeError::DecodeFailure); };
@@ -1173,6 +1181,16 @@ pub mod encoding {
                     Immediate::Imm64(vec) => vec,
                 };
                 bytes.clone()
+            }
+
+            pub fn len(&self) -> usize { 
+                match self {
+                    Immediate::Imm8(vec) => vec.len(),
+                    Immediate::Imm16(vec) => vec.len(),
+                    Immediate::Imm32(vec) => vec.len(),
+                    Immediate::Imm64(vec) => vec.len(),
+                }
+
             }
         }
         impl TryFrom<&[u8]> for Immediate {
