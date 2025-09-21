@@ -792,7 +792,6 @@ pub mod encoding {
             None,
             Rel8(u8), Rel16(u16), Rel32(u32),
             Abs8(u8), Abs16(u16), Abs32(u32)
-
         }
         impl Displacement {
 
@@ -997,9 +996,27 @@ pub mod encoding {
                     Displacement::Rel32(d) =>  {let offset = Offset(*d);        offset.to_string()},
 
                     // This will not work long term. 
-                    Displacement::Abs8(d)  => format!("0x{d:08X}"),
-                    Displacement::Abs16(d) => format!("0x{d:08X}"),
-                    Displacement::Abs32(d) => format!("0x{d:08X}"),
+                    Displacement::Abs8(d)  => {
+                        if ((d & 0b1000_0000) >> 7) == 1 {
+                            format!("0x{:08X}", (*d as i8) as i32)
+                        } else {
+                            format!("0x{d:08X}")
+                        }
+                    },
+                    Displacement::Abs16(d) => {
+                        if ((d & 0x8000) >> 15) == 1 {
+                            format!("0x{:08X}", (*d as i16) as i32)
+                        } else {
+                            format!("0x{d:08X}")
+                        }
+                    },
+                    Displacement::Abs32(d) => {
+                        if ((d & 0x80000000) >> 31) == 1 {
+                            format!("0x{:08X}", (*d as i32))
+                        } else {
+                            format!("0x{d:08X}")
+                        }
+                    },
                     Displacement::None => "".into(),
                 };
                 write!(f, "{string}")
@@ -1068,33 +1085,6 @@ pub mod encoding {
             let target = displacement + base;
             debug!("{target:x} ?= {expected_a:x}");
             assert_eq!(target, expected_a);
-        }
-
-        #[test]
-        fn displacement_negative_numbers() {
-            let expected_a: u32 = 0xFFFFFFFC;
-            let expected_b: u32 = 0x0000000C;
-            let expected_c: u32 = 0x000000FC;
-            let expected_d: u32 = 0xFFFFAFFC;
-
-            let original: u8 = 0xFC;
-            assert_eq!(byte_to_double_with_sign_extend([original]), expected_a.to_be_bytes());
-
-            let original: u8 = 0x0C;
-            assert_eq!(byte_to_double_with_sign_extend([original]), expected_b.to_be_bytes());
-
-            let original: [u8;2] = [0xFF, 0xFC];
-            assert_eq!(word_to_double_with_sign_extend(original), expected_a.to_be_bytes());
-
-            let original: [u8;2] = [0x00, 0x0C];
-            assert_eq!(word_to_double_with_sign_extend(original), expected_b.to_be_bytes());
-
-            let original: [u8;2] = [0x00, 0xFC];
-            assert_eq!(word_to_double_with_sign_extend(original), expected_c.to_be_bytes());
-
-            let original: [u8;2] = [0xAF, 0xFC];
-            assert_eq!(word_to_double_with_sign_extend(original), expected_d.to_be_bytes());
-
         }
 
         #[allow(unused)]

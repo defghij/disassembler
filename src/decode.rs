@@ -190,7 +190,10 @@ impl Bytes {
             }
             OpEn::D  => {
                 let width = rule.len().0 - opcode_length;
+                debug!("location: 0x{:X}", location.to_pointer());
                 debug!("Displacement Byte Width: {width}");
+                debug!("Opcode Length: {opcode_length}");
+                debug!("width: {width}");
 
                 let displacement = Displacement::from_relative(bytes, location, opcode_length, width)?;
                 instruction_length += displacement.len();

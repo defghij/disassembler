@@ -17,9 +17,9 @@ pub mod files {
     use crate::input::get_bytes;
 
     #[test]
-    fn example1() {
-        let bytes = include_bytes!("./example1").to_vec();
-        let expected_raw = include_str!("./example1.out");
+    fn file1() {
+        let bytes = include_bytes!("./file1.o").to_vec();
+        let expected_raw = include_str!("./file1.out");
         let expected: Vec<char> = expected_raw
             .chars()
             .filter(|c|{
@@ -35,6 +35,31 @@ pub mod files {
         println!("\nExpected:\n{expected_raw}");
         let output: Vec<char> = format!("{output}")
             .chars().filter(|c|!(c.is_whitespace() || c.is_control())).collect();
+
+        // Just test raw characters independent of spacing and newlines
+        output.iter().zip(expected.iter()).for_each(|(a,b)| {println!("{a} {b}"); assert!( a == b);});
+    }
+
+    #[traced_test]
+    #[test]
+    fn file2() {
+        let bytes = include_bytes!("./file2.o").to_vec();
+        let expected_raw = include_str!("./file2.out");
+        let expected: Vec<&str> = expected_raw
+            .split("\n")
+            .collect();
+
+        println!("{bytes:X?}");
+        
+        let output = Disassembly::from(bytes);
+
+        
+        println!("Output:\n{output}");
+        println!("\nExpected:\n{expected_raw}");
+        let output = format!("{output}");
+        let output: Vec<&str> = output
+            .split("\n")
+            .collect();
 
         // Just test raw characters independent of spacing and newlines
         output.iter().zip(expected.iter()).for_each(|(a,b)| {println!("{a} {b}"); assert!( a == b);});

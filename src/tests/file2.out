@@ -1,0 +1,48 @@
+00000000: 31 C0                 xor eax, eax
+00000002: 01 C8                 add eax, ecx
+00000004: 01 D0                 add eax, edx
+00000006: 55                    push ebp
+00000007: 89 E5                 mov ebp, esp
+00000009: 52                    push edx
+0000000A: 51                    push ecx
+0000000B: B8 44 43 42 41        mov eax, 0x41424344
+00000010: 8B 95 08 00 00 00     mov edx, [ ebp + 0x00000008 ]
+00000016: 8B 8D 0C 00 00 00     mov ecx, [ ebp + 0x0000000C ]
+0000001C: 01 D1                 add ecx, edx
+0000001E: 89 C8                 mov eax, ecx
+00000020: 5A                    pop edx
+00000021: 59                    pop ecx
+00000022: 5D                    pop ebp
+00000023: C2 08 00              retn 0x0008
+00000026: 0F                    db 0x0F
+00000027: AE                    db 0xAE
+00000028: FE                    db 0xFE
+00000029: 8D                    db 0x8D
+0000002A: F9                    db 0xF9
+0000002B: E8                    db 0xE8
+0000002C: 00                    db 0x00
+0000002D: 00                    db 0x00
+0000002E: 89 7E FC              mov [ esi + 0xFFFFFFFC ], edi
+00000031: 55                    push ebp
+00000032: 89 E5                 mov ebp, esp
+00000034: 52                    push edx
+00000035: 51                    push ecx
+00000036: 39 D1                 cmp ecx, edx
+00000038: 74 0F                 jz 0x49
+0000003A: B8 44 43 42 41        mov eax, 0x41424344
+0000003F: 8B 55 08              mov edx, [ ebp + 0x8 ]
+00000042: 8B 4D 0C              mov ecx, [ ebp + 0xc ]
+00000045: 01 D1                 add ecx, edx
+00000047: 89 C8                 mov eax, ecx
+00000049: 5A                    pop edx
+0000004A: 59                    pop ecx
+0000004B: 5D                    pop ebp
+0000004C: C2 08 00              ret 0x8
+0000004F: 55                    push ebp
+00000050: 57                    push edi
+00000051: C3                    ret
+00000052: 89 38                 mov [ eax ], edi
+00000054: 55                    push ebp
+00000055: 57                    push edi
+00000056: 55                    push ebp
+00000057: EBF9                  jmp short 0x52

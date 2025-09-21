@@ -142,7 +142,7 @@ impl From<Vec<u8>> for Disassembly
                 }; 
 
             let instruction_idx = offset.to_pointer();
-            debug!("Instruction Index: {instruction_idx}");
+            debug!("Instruction Index: 0x{instruction_idx:X}");
 
             for rule in rules { // We dont know which rule will decode into an instruction
                 debug!("Trying rule: {rule}");
@@ -154,7 +154,7 @@ impl From<Vec<u8>> for Disassembly
 
                         let modrm_idx: usize = rule.op_code().len();
                         let modrm_byte = bytes[instruction_idx + modrm_idx];
-                        debug!("MODRM byte {modrm_byte} at location: {}", instruction_idx+modrm_idx);
+                        debug!("MODRM byte {modrm_byte} at location: 0x{:X}", instruction_idx+modrm_idx);
                         let Ok(modrm) = rule.modrm_byte(modrm_byte) else { continue };
                         debug!("Got ModRM Byte: 0x{:X} = {modrm:?}", modrm.as_byte());
 
