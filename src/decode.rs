@@ -319,8 +319,31 @@ impl Bytes {
                     instruction,
                 }
             },
+            OpEn::MR => { 
+                let Some(modrm) = modrm else { 
+                    error!("This OpEn requires a MODRM byte but found None");
+                    return Err(DecodeError::InvalidModRM);
+                };
+                
+                // First instruction is Memory
+                let operand = Bytes::decode_memory(bytes, disp_idx, modrm, sib)?;
+                instruction_length += operand.len();
+                instruction.add(operand);
+
+                // Second operand is Register
+                if extensions.is_some_and(|e| e.contains(&Extension::SR)) {
+                    instruction.add(Operand::Register(Register::from(modrm.1)));
+                } else {
+                    error!("Operand Encoding expected an extension `/r` but found none");
+                    return Err(DecodeError::InvalidOpCodeExtension);
+                }
+
+                Bytes::Decoded {
+                    bytes: bytes[..instruction_length].to_vec(),
+                    instruction,
+                }
+            },
             OpEn::RM => { todo!() },
-            OpEn::MR => { todo!() },
             OpEn::NP => { todo!() },
             OpEn::FD => { todo!() },
             OpEn::TD => { todo!() },
@@ -330,9 +353,9 @@ impl Bytes {
     }
 
     pub fn decode_memory(bytes: &[u8], idx: usize, modrm: ModRM, sib: Option<Sib>) -> Result<Operand, DecodeError> {
+        debug!("Mod bits: {:?}", modrm.0);
         let operand = match modrm.0 {
             ModBits::OO => {
-                debug!("Mod bits: {:?}", modrm.0);
                 match modrm.2 {
                     Register::ESP => { // [--][--]
                         let Some(sib) = sib 
@@ -368,7 +391,6 @@ impl Bytes {
                 }
             },
             ModBits::OI => {
-                debug!("Mod bits: {:?}", modrm.0);
                 match modrm.2 {
                     Register::ESP => { // [--][--]+disp8
                         debug!("RM bits: {:?}", modrm.2);
@@ -405,7 +427,7 @@ impl Bytes {
 
                         let displacement = Displacement::disp32(bytes, idx)?;
 
-                        let eaddr = EffectiveAddress::base_d32(modrm.1, displacement.into());
+                        let eaddr = EffectiveAddress::base_d32(modrm.2, displacement.into());
 
                         Operand::EffectiveAddress(eaddr)
                     },
@@ -518,9 +540,7 @@ impl DecodeRule {
                 if self.modrm_required() { bytes += 1 }
                 (op_code.len() + bytes, true)
             },
-            OpEn::RM => unimplemented!("`len` not implemented for this Operand Encoding"),
-            OpEn::MR => unimplemented!("`len` not implemented for this Operand Encoding"),
-            OpEn::M | OpEn::M1 | OpEn::MI => {
+            OpEn::M | OpEn::M1 | OpEn::MI | OpEn::MR | OpEn::RM => {
                 let extensions = extensions.as_ref().expect("All Rules with an OpEn::M encoding should require an extension");
                 let mut bytes = extensions.iter()
                     .filter(|ext| ext.operand_length().is_some())
@@ -530,7 +550,6 @@ impl DecodeRule {
                 (op_code.len() + bytes, false)
             },
             OpEn::NP => unimplemented!("`len` not implemented for this Operand Encoding"),
-            OpEn::ZO => unimplemented!("`len` not implemented for this Operand Encoding"),
             OpEn::ZO => unimplemented!("`len` not implemented for this Operand Encoding"),
             OpEn::O  => unimplemented!("`len` not implemented for this Operand Encoding"),
             OpEn::FD => unimplemented!("`len` not implemented for this Operand Encoding"),
@@ -546,6 +565,12 @@ impl DecodeRule {
         self.3.is_some()
     }
 
+    pub fn uses_sdigit(&self) -> bool {
+        self.3.clone().is_some_and(|exts|{
+            exts.get_sdigit().is_some()
+        })
+    }
+
     /// Takes a [u8] and yields a Some([ModRM]) if the byte can be validated as a ModRM byte for the
     /// particular [DecodeRule] that self describes. If is not valid, then a [None] is returned.
     pub fn modrm_byte(&self, byte: u8) -> Result<ModRM, DecodeError> {
@@ -557,15 +582,18 @@ impl DecodeRule {
         // Check that if extension dictates a value in the modrm byte that it is set.
         if ext_set.is_some() {
             let extensions = ext_set.as_ref().expect("Should be some due to conditional");
-            let Some(sdigit) = extensions.get_sdigit() else { 
-                error!("Expected SDigit extension. Found None");
-                return Err(DecodeError::InvalidModRM);
-            };
+            if self.uses_sdigit() {
+                debug!("Uses sdigit");
+                let Some(sdigit) = extensions.get_sdigit() else { 
+                    error!("Expected SDigit extension. Found None");
+                    return Err(DecodeError::InvalidModRM);
+                };
 
-            // Decoding rule and ModRM have incompatible REG bits.
-            if !sdigit.is_sdigit(rg as u8) { 
-                error!("Rule (sdigit) and ModRM (REG bits) conflict");
-                return Err(DecodeError::InvalidModRM) }
+                // Decoding rule and ModRM have incompatible REG bits.
+                if !sdigit.valid_sdigit(rg as u8) { 
+                    error!("Rule (sdigit) and ModRM (REG bits) conflict");
+                    return Err(DecodeError::InvalidModRM) }
+            }
         }
 
 
@@ -589,7 +617,7 @@ impl DecodeRule {
 
             match op_code.bytes()[0] {
                 // OpCodes where an operands implied by the OpCode
-                0x2D | 0x05 => {
+                0x2D | 0x05 | 0x39 => {
                     if extensions.contains(&Extension::IB) { return Some(Register::AL); } else
                     if extensions.contains(&Extension::IW) { return Some(Register::AX); } else
                     if extensions.contains(&Extension::ID) { return Some(Register::EAX); } 

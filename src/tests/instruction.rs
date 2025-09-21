@@ -238,44 +238,46 @@ pub mod compendium {
             .for_each(|(s,b)| { check(s.to_string(),b); });
     }
 
-    //#[test]
-    //fn mr_rm_and_reg() {
-        //let mapping: Vec<(&str, &[u8])> = vec![
-            //("cmp esi, edi",
-             //&[0x39, 0xFE]),
+    #[test]
+    fn mr_rm_and_reg() {
+        let mapping: Vec<(&str, &[u8])> = vec![
+            ("00000000: 39 FE     cmp esi, edi",
+             &[0x39, 0xFE]),
 
-            //("xor [ 0xAABBCCDD ], esi",
-             //&[0x31, 0x35, 0xDD, 0xCC, 0xBB, 0xAA]),
+            ("00000000: 31 35 DD CC BB AA     xor [ 0xAABBCCDD ], esi",
+             &[0x31, 0x35, 0xDD, 0xCC, 0xBB, 0xAA]),
 
-            //("add [ edi + 0xAABBCCDD ], ecx",
-             //&[0x01, 0x8F, 0xDD, 0xCC, 0xBB, 0xAA]),
+            ("00000000: 01 8F DD CC BB AA     add [ edi + 0xAABBCCDD ], ecx",
+             &[0x01, 0x8F, 0xDD, 0xCC, 0xBB, 0xAA]),
 
-            //("mov [ esi * 4 + ebx + 0xAABBCCDD ], edi",
-             //&[0x89, 0xBC, 0xB3, 0xDD, 0xCC, 0xBB, 0xAA]),
+            ("00000000: 89 BC B3 DD CC BB AA     mov [ esi * 4 + ebx + 0xAABBCCDD ], edi",
+             &[0x89, 0xBC, 0xB3, 0xDD, 0xCC, 0xBB, 0xAA]),
 
-            //("cmp [ ebx * 4 + 0xAABBCCDD ], eax",
-             //&[0x39, 0x04, 0x9D, 0xDD, 0xCC, 0xBB, 0xAA]),
-        //];
-        //check_instructions(mapping);
-    //}
+            ("00000000: 39 04 9D DD CC BB AA     cmp [ ebx * 4 + 0xAABBCCDD ], eax",
+             &[0x39, 0x04, 0x9D, 0xDD, 0xCC, 0xBB, 0xAA]),
+        ];
+        mapping.iter()
+            .for_each(|(s,b)| { check(s.to_string(),b); });
+    }
 
-    //#[test]
-    //fn rm_reg_and_rm() {
-        //let mapping: Vec<(&str, &[u8])> = vec![
-            //("cmp edi, esi",
-             //&[0x3B, 0xFE]),
+    #[test]
+    fn rm_reg_and_rm() {
+        let mapping: Vec<(&str, &[u8])> = vec![
+            ("00000000: 3B FE     cmp edi, esi",
+             &[0x3B, 0xFE]),
 
-            //("dd ecx, [ edi + 0xAABBCCDD ]",
-             //&[0x03, 0x8F, 0xDD, 0xCC, 0xBB, 0xAA]),
+            ("00000000:03 8F DD CC BB AA     add ecx, [ edi + 0xAABBCCDD ]",
+             &[0x03, 0x8F, 0xDD, 0xCC, 0xBB, 0xAA]),
 
-            //("mov edi, [ esi * 4 + ebx + 0xAABBCCDD ]",
-             //&[0x8B, 0xBC, 0xB3, 0xDD, 0xCC, 0xBB, 0xAA]),
+            ("00000000: 8B BC B3 DD CC BB AA     mov edi, [ esi * 4 + ebx + 0xAABBCCDD ]",
+             &[0x8B, 0xBC, 0xB3, 0xDD, 0xCC, 0xBB, 0xAA]),
              
-            //("cmp eax, [ ebx * 4 + 0xAABBCCDD ]",
-             //&[0x3B, 0x04, 0x9D, 0xDD, 0xCC, 0xBB, 0xAA]),
-        //];
-        //check_instructions(mapping);
-    //}
+            ("00000000: 3B 04 9D DD CC BB AA    cmp eax, [ ebx * 4 + 0xAABBCCDD ]",
+             &[0x3B, 0x04, 0x9D, 0xDD, 0xCC, 0xBB, 0xAA]),
+        ];
+        mapping.iter()
+            .for_each(|(s,b)| { check(s.to_string(),b); });
+    }
 
     //#[test]
     //fn rmi_regrm_and_immediate() {

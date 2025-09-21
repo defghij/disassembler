@@ -128,8 +128,8 @@ impl OpEn {
 
     pub fn operand_count(&self) -> usize {
         match self {
-            OpEn::RM => unimplemented!("Not yet implemented"),
-            OpEn::MR => unimplemented!("Not yet implemented"),
+            OpEn::RM => 2,
+            OpEn::MR => 2,
             OpEn::MI => 2,
             OpEn::M1 => 2,
             OpEn::M  => 1,
@@ -1182,7 +1182,10 @@ pub mod encoding {
             pub fn get_sdigit(&self) -> Option<Extension> {
                 self.0.iter()
                     .find_map(|ext| {
-                        Extension::try_from(*ext).ok()
+                        let Ok(ext) = Extension::try_from(*ext) 
+                            else { return None };
+                        if ext.is_sdigit() { Some(ext) }
+                        else { None }
                     })
             }
         }
@@ -1198,8 +1201,21 @@ pub mod encoding {
 
         }
         impl Extension {
+            pub fn is_sdigit(&self) -> bool {
+                match self {
+                    Extension::S0 |
+                    Extension::S1 |
+                    Extension::S2 |
+                    Extension::S3 |
+                    Extension::S4 |
+                    Extension::S5 |
+                    Extension::S6 |
+                    Extension::S7 => true,
+                    _ => return false,
+                }
+            }
 
-            pub fn is_sdigit(&self, value: u8) -> bool {
+            pub fn valid_sdigit(&self, value: u8) -> bool {
                 let sdigit = match self {
                     Extension::S0 => 0,
                     Extension::S1 => 1,
