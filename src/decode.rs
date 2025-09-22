@@ -1,23 +1,19 @@
 use std::fmt::Display;
 
 use tracing::{debug, error};
-use crate::instruction::encoding::{operands::{EffectiveAddress, Offset}, ModBits};
-#[allow(unused)]
-use crate::{
-    opcodes::DecodeRules,
+use crate::
     instruction::{
         Instruction,
         OpEn,                
-        memory::Memory,
         encoding::{
             operands::{
-                Operand, Displacement, Immediate, Register
+                Operand, Displacement, Immediate, Register,
+                EffectiveAddress, Offset
             },
-            Prefix, OpCode, ModRM, Sib,
+            ModBits, Prefix, OpCode, ModRM, Sib,
             AddressingModes,
             extensions::{ExtSet, Extension},
         }
-    }
 };
 
 #[derive(Clone, Debug, PartialEq, Hash)]
@@ -104,12 +100,13 @@ impl Bytes {
 
         let opcode: u8 = op_code.0[0];
         let opcode_length = rule.op_code().len();
+        let prefix = if rule.1.is_some() { 1 } else { 0 };
         let mut modrm_idx = 0;
         let mut sib_idx   = 0;
         let mut disp_idx  = 0;
         let mut disp_len  = 0;
         let mut imm_idx   = 0;
-        let mut instruction_length = opcode_length;
+        let mut instruction_length = prefix + opcode_length;
 
         if opcode_length > 1 && bytes[0..opcode_length].to_vec() != rule.op_code().bytes() {
             error!("Encountered a multi-byte opcode which did not match bytes passed in.");
@@ -157,6 +154,16 @@ impl Bytes {
                 else { return Err(DecodeError::DecodeFailure); }
             },
             OpEn::ZO => {
+                if bytes[0] == 0xF2 { /* repne cmpsd*/
+                    // This is a hacky case to account for the way `repne cmpsd` is handled in
+                    // [DECODE_RULES]. `repne` should be a proper prefix. However, the assignment
+                    // only has a single instruction with a prefix so it was easier to "encode" it
+                    // as part of the instruction rather than handle prefixes _properly_.
+                    Bytes::Decoded {
+                        bytes: bytes[..instruction_length].to_vec(),
+                        instruction: instruction.clone()
+                    }
+                } else 
                 if extensions.is_none() { 
                     Bytes::Decoded {
                         bytes: vec![bytes[0]],
@@ -422,13 +429,44 @@ impl Bytes {
                 error!("Unsupported Operand Encoding");
                 return Err(DecodeError::DecodeFailure);
             },
-            OpEn::FD => {
-                error!("Unsupported Operand Encoding");
-                return Err(DecodeError::DecodeFailure);
+            OpEn::FD => { // mnemonic eax, imm32 (per assignment) 
+                let Some(extensions) = extensions 
+                else { 
+                    error!("Expected OpCode extensions. None found");
+                    return Err(DecodeError::InvalidOpCodeExtension); 
+                };
+                imm_idx = instruction_length;
+
+                instruction.add(Operand::Register(Register::EAX));
+
+                let imm = Bytes::decode_immediate(bytes, imm_idx, extensions)?;
+                instruction_length += imm.len();
+                instruction.add(Operand::Immediate(imm));
+
+                Bytes::Decoded {
+                    bytes: bytes[..instruction_length].to_vec(),
+                    instruction: instruction.clone()
+                }
             },
             OpEn::TD => { 
-                error!("Unsupported Operand Encoding");
-                return Err(DecodeError::DecodeFailure);
+                let Some(extensions) = extensions 
+                else { 
+                    error!("Expected OpCode extensions. None found");
+                    return Err(DecodeError::InvalidOpCodeExtension); 
+                };
+                imm_idx = instruction_length;
+
+
+                let imm = Bytes::decode_immediate(bytes, imm_idx, extensions)?;
+                instruction_length += imm.len();
+                instruction.add(Operand::Immediate(imm));
+
+                instruction.add(Operand::Register(Register::EAX));
+
+                Bytes::Decoded {
+                    bytes: bytes[..instruction_length].to_vec(),
+                    instruction: instruction.clone()
+                }
             },
         };
 
@@ -607,14 +645,14 @@ impl DecodeRule {
     pub fn len(&self) -> (usize, bool) {
         let (mnemonic, prefix, op_code, extensions, op_encoding, addr_modes) = self.separate();
         
-        if op_code.len() == 1 && op_encoding.operand_count() == 0 {
-            return (1,true);
-        }
+        //if op_code.len() == 1 && op_encoding.operand_count() == 0 {
+            //return (1,true);
+        //}
 
         // This match statement currently has a lot of duplicated code. If iterating over extension
         // operand length turns out to be sufficient this can be reduced/removed.
         match op_encoding {
-            OpEn::I | OpEn::OI | OpEn::D => {
+            OpEn::I | OpEn::OI | OpEn::D | OpEn::FD | OpEn::TD => {
                 let extensions = extensions.as_ref().expect("All rules in this match statement should require an extension");
                 let mut bytes = extensions.iter()
                     .filter(|ext| ext.operand_length().is_some())
@@ -632,11 +670,9 @@ impl DecodeRule {
                 if self.modrm_required() { bytes += 1 }
                 (op_code.len() + bytes, false)
             },
-            OpEn::NP => (0, false), /*Not supported, not required by assignment */
-            OpEn::ZO => (0, false), /*Not supported, not required by assignment */ 
-            OpEn::O  => (0, false), /*Not supported, not required by assignment */ 
-            OpEn::FD => (0, false), /*Not supported, not required by assignment */ 
-            OpEn::TD => (0, false), /*Not supported, not required by assignment */ 
+            OpEn::NP => (1, false), 
+            OpEn::ZO => if self.1.is_some() { debug!("Have prefix"); (2, true) } else { debug!("No prefix"); (1,true) },  
+            OpEn::O  => (1, false), 
         }
     }
 

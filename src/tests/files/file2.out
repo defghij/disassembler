@@ -26,6 +26,7 @@
 0000003A: 8B 4D 0C              mov ecx, [ ebp + 0x0000000C ]
 0000003D: 01 D1                 add ecx, edx
 0000003F: 89 C8                 mov eax, ecx
+offset_00000041h:
 00000041: 5A                    pop edx
 00000042: 59                    pop ecx
 00000043: 5D                    pop ebp
@@ -33,6 +34,7 @@
 00000047: 55                    push ebp
 00000048: 57                    push edi
 00000049: C3                    retn
+offset_0000004Ah:
 0000004A: 89 38                 mov [ eax ], edi
 0000004C: 55                    push ebp
 0000004D: 57                    push edi
@@ -46,3 +48,4 @@
 00000056: E8                    db 0xE8
 00000057: 00                    db 0x00
 00000058: 00                    db 0x00
+00000059: 0A                    db 0x0A

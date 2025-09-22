@@ -171,8 +171,11 @@ static DECODE_RULES: RulesMap = phf_map! {
     "0x8F" => &[ins3!("pop",     [0x8F], ["/0"],                 OpEn::M,  [0b00,0b01,0b10,0b11])],
     "0x90" => &[ins0!("nop",     [0x90],                         OpEn::ZO                       )],
     "0x99" => &[ins0!("cdq",     [0x99],                         OpEn::ZO                       )],
-    "0xA1" => &[ins0!("mov",     [0xA1],                         OpEn::FD                       )],
-    "0xA3" => &[ins0!("mov",     [0xA3],                         OpEn::TD                       )],
+    // These two instruction doesn't actually have an extension. But assignment states to treat the
+    // MOFF32 operand as an IMM32, so we encode that as an extension
+    "0xA1" => &[ins1!("mov",     [0xA1], ["id"],                 OpEn::FD                       )],
+    "0xA3" => &[ins1!("mov",     [0xA3], ["id"],                 OpEn::TD                       )],
+
     "0xA5" => &[ins0!("movsd",   [0xA5],                         OpEn::ZO                       )],
     "0xA9" => &[ins1!("test",    [0xA9], ["id"],                 OpEn::I                        )],
 

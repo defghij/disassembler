@@ -370,7 +370,9 @@ pub mod compendium {
             ("00000000: B8 44 43 42 41     mov eax, 0x41424344",
              &[0xB8, 0x44, 0x43, 0x42,0x41]),
             ("00000000: 8B 95 08 00 00 00     mov edx, [ ebp + 0x00000008 ]",
-             &[0x8B, 0x95, 0x08, 0x00, 0x00, 0x00])
+             &[0x8B, 0x95, 0x08, 0x00, 0x00, 0x00]),
+            ("00000000: F2 A7     repne cmpsd",
+             &[0xF2, 0xA7,])
         ];
         mapping.iter()
             .for_each(|(s,b)| { check(s.to_string(),b); });

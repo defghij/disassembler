@@ -199,9 +199,11 @@ impl From<Vec<u8>> for Disassembly
                     },
                     false => { // know length a priori
                         let (length, _final) = rule.len();
+                        debug!("Reported Rule Length: {:?}", rule.len());
+
                         let byte_range = instruction_idx..=instruction_idx+length;
 
-                        debug!("Rule reported true byte length {length} for an instruction byte range of {byte_range:?}");
+                        debug!("Rule reported true byte length {length} for non-Modrm instruction with byte range of {byte_range:?}");
 
                         let Some(prospective_bytes) = bytes.get(instruction_idx.. instruction_idx + length)
                             else { 
