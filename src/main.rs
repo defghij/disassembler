@@ -7,7 +7,7 @@ mod output;
 
 use tracing::{level_filters::LevelFilter, error};
 
-use output::setup_tracing;
+use output::{setup_tracing, Disassembly};
 
 fn main() {
     setup_tracing(LevelFilter::OFF);
@@ -17,7 +17,9 @@ fn main() {
         error!("Unable to acquire bytes from file(s): {:?}", result.err());
         return;
     }
-    let _bytes = result.ok().expect("Error should have been handled above");
+    let bytes = result.ok().expect("Error should have been handled above");
 
-    println!("Hello, world!");
+    let output = Disassembly::from(bytes);
+
+    println!("{output}");
 }

@@ -139,9 +139,9 @@ impl OpEn {
             OpEn::OI => 2,
             OpEn::D  => 1 ,
             OpEn::RMI  => 3,
-            OpEn::NP => unimplemented!("Not part of the assignment"),
-            OpEn::FD => unimplemented!("Not part of the assignment"),
-            OpEn::TD => unimplemented!("Not part of the assignment"),
+            OpEn::NP => 0, /* Not actually supported*/ 
+            OpEn::FD => 0, /* Not actually supported*/ 
+            OpEn::TD => 0, /* Not actually supported*/ 
         }
 
     }
@@ -949,11 +949,24 @@ pub mod encoding {
 
             pub fn from_double_relative(address: Offset, opcode_length: usize, operand: &[u8;4]) -> Displacement {
                 let base = address.0 + opcode_length as u32 + operand.len() as u32;
-
                 let displacement = u32::from_le_bytes(*operand);
-                debug!("displacement: {displacement:X}");
-                let target = displacement + base;
-                Displacement::Rel32(target)
+
+                if ((displacement & 0x80000000) >> 31) == 1 {
+                    let target = (displacement as i32) + base as i32;
+                    debug!("Target = {displacement} + {base}");
+                    Displacement::Rel32(target as u32)
+                } 
+                else {
+                    let target = displacement as u32 + base as u32;
+                    debug!("Target = {displacement} + {base}");
+                    Displacement::Rel32(target)
+                }
+                //let base = address.0 + opcode_length as u32 + operand.len() as u32;
+
+                //let displacement = u32::from_le_bytes(*operand);
+                //debug!("displacement: {displacement:X}");
+                //let target = displacement + base;
+                //Displacement::Rel32(target)
             }
         }
         impl Default for Displacement {

@@ -16,20 +16,6 @@ use super::{
     }
 };
 
-/// Returns a Vector of possible ways to decode the current and
-/// potentially follow on bytes based _only_ on a single byte.
-///
-/// *Assumption*:
-/// Relies on the assumption that the [`Map<u8,DecodeRule>`]s contained
-/// in OPCODES has a one-to-one relationship between key,value pairs.
-//pub fn _presumptive_decode_rules(key: u8) -> &'static[DecodeRule] {
-    //let _dc_rules = DECODE_RULES.get(&key);
-
-    //unimplemented!("lol");
-//}
-
-
-
 macro_rules! ins0 {
     ($Mnemonic:literal, $OpCodes:expr, $OpEn:expr) => {
         DecodeRule($Mnemonic, 
@@ -150,7 +136,7 @@ static DECODE_RULES: RulesMap = phf_map! {
    "0x35" => &[ins1!("xor",      [0x35],       ["id"],           OpEn::I                        )],
    "0x39" => &[ins3!("cmp",      [0x39],       ["/r"],           OpEn::MR, [0b00,0b01,0b10,0b11])], 
    "0x3B" => &[ins3!("cmp",      [0x3B],       ["/r"],           OpEn::RM, [0b00,0b01,0b10,0b11])], 
-   "0x3D" => &[ins1!("cmp",      [0x3D],       ["/id"],          OpEn::I                        )], 
+   "0x3D" => &[ins1!("cmp",      [0x3D],       ["id"],           OpEn::I                        )], 
 
    //EAX      ECX      EDX      EBX      ESP      EBP      ESI       EDI
    "0x40" | "0x41" | "0x42" | "0x43" | "0x44" | "0x45" | "0x46" | "0x47" => 

@@ -230,7 +230,11 @@ impl From<Vec<u8>> for Disassembly
                     let instruction = instruction
                         .get_instruction().expect("Should be a valid instruction");
 
-                    let has_label_operand = instruction.operands.iter().any(|op| matches!(op, Operand::Label(_)));
+                    let has_label_operand = instruction.operands
+                        .iter()
+                        .any(|op| {
+                            matches!(op, Operand::Label(_)) || matches!(op, Operand::Displacement(_))
+                            });
 
                     if has_label_operand {
                         let label = instruction

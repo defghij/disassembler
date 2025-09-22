@@ -18,8 +18,8 @@ pub mod files {
 
     #[test]
     fn file1() {
-        let bytes = include_bytes!("./file1.o").to_vec();
-        let expected_raw = include_str!("./file1.out");
+        let bytes = include_bytes!("./files/file1.o").to_vec();
+        let expected_raw = include_str!("./files/file1.out");
         let expected: Vec<char> = expected_raw
             .chars()
             .filter(|c|{
@@ -43,8 +43,8 @@ pub mod files {
     #[traced_test]
     #[test]
     fn file2() {
-        let bytes = include_bytes!("./file2.o").to_vec();
-        let expected_raw = include_str!("./file2.out");
+        let bytes = include_bytes!("./files/file2.o").to_vec();
+        let expected_raw = include_str!("./files/file2.out");
         let expected: Vec<&str> = expected_raw
             .split("\n")
             .collect();

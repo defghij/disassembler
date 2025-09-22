@@ -418,9 +418,18 @@ impl Bytes {
                     instruction,
                 }
             },
-            OpEn::NP => { todo!() },
-            OpEn::FD => { todo!() },
-            OpEn::TD => { todo!() },
+            OpEn::NP => { 
+                error!("Unsupported Operand Encoding");
+                return Err(DecodeError::DecodeFailure);
+            },
+            OpEn::FD => {
+                error!("Unsupported Operand Encoding");
+                return Err(DecodeError::DecodeFailure);
+            },
+            OpEn::TD => { 
+                error!("Unsupported Operand Encoding");
+                return Err(DecodeError::DecodeFailure);
+            },
         };
 
         Ok(instruction)
@@ -544,10 +553,6 @@ impl Bytes {
             Err(DecodeError::DecodeFailure)
         }
     }
-
-    pub fn operands(&self) -> Option<Vec<String>> { unimplemented!("lol"); }
-    pub fn mnemonic(&self) -> Option<String> { unimplemented!("not yet"); }
-    pub fn prefix(&self) -> Option<String> { unimplemented!("lol"); }
 }
 impl Default for Bytes {
     fn default() -> Self { Bytes::None }
@@ -627,11 +632,11 @@ impl DecodeRule {
                 if self.modrm_required() { bytes += 1 }
                 (op_code.len() + bytes, false)
             },
-            OpEn::NP => unimplemented!("`len` not implemented for this Operand Encoding"),
-            OpEn::ZO => unimplemented!("`len` not implemented for this Operand Encoding"),
-            OpEn::O  => unimplemented!("`len` not implemented for this Operand Encoding"),
-            OpEn::FD => unimplemented!("`len` not implemented for this Operand Encoding"),
-            OpEn::TD => unimplemented!("`len` not implemented for this Operand Encoding"),
+            OpEn::NP => (0, false), /*Not supported, not required by assignment */
+            OpEn::ZO => (0, false), /*Not supported, not required by assignment */ 
+            OpEn::O  => (0, false), /*Not supported, not required by assignment */ 
+            OpEn::FD => (0, false), /*Not supported, not required by assignment */ 
+            OpEn::TD => (0, false), /*Not supported, not required by assignment */ 
         }
     }
 
@@ -709,7 +714,7 @@ impl DecodeRule {
 
     pub fn can_make_label(&self) -> bool {
         match self.mnemonic() {
-            "call" => true,
+            "call" | "jmp" | "jz" | "jnz" => true,
             _ => false,
         }
     }
@@ -720,6 +725,7 @@ impl DecodeRule {
         match &self.3 {
             None => None,
             Some(ext_set) => {
+                debug!("Extensions: {ext_set:?}");
                 let extensions = ext_set.0
                     .iter()
                     .map(|ext| { 
