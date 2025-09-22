@@ -14,7 +14,7 @@ fn main() {
 
     let result = input::read_bytes_from_cli();
     if result.is_err() {
-        error!("Unable to acquire bytes from file: {:?}", result.err());
+        error!("Unable to acquire bytes from file(s): {:?}", result.err());
         return;
     }
     let _bytes = result.ok().expect("Error should have been handled above");

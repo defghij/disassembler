@@ -111,6 +111,11 @@ impl Bytes {
         let mut imm_idx   = 0;
         let mut instruction_length = opcode_length;
 
+        if opcode_length > 1 && bytes[0..opcode_length].to_vec() != rule.op_code().bytes() {
+            error!("Encountered a multi-byte opcode which did not match bytes passed in.");
+            return Err(DecodeError::UnknownOpcode);
+        }
+
         let modrm = if rule.modrm_required() {
             modrm_idx = instruction_length; // zero indexing
             instruction_length += 1;
@@ -194,6 +199,7 @@ impl Bytes {
                 debug!("Displacement Byte Width: {width}");
                 debug!("Opcode Length: {opcode_length}");
                 debug!("width: {width}");
+                debug!("bytes: {}", bytes.iter().map(|c| format!("0x{c:X} ")).collect::<String>() );
 
                 let displacement = Displacement::from_relative(bytes, location, opcode_length, width)?;
                 instruction_length += displacement.len();

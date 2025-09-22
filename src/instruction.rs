@@ -890,8 +890,11 @@ pub mod encoding {
                                  width: usize)
                 -> Result<Displacement,DecodeError>
             {
-                let base = location.0 as usize;
-                let Some(dbytes) = bytes.get(base+opcode_length..base+opcode_length+width)
+                //let base = location.0 as usize;
+                let base = 0;
+                let byte_range = base+opcode_length..base+opcode_length+width;
+                debug!("Attempting to grab range {:?} from bytes {:?}", byte_range, bytes); 
+                let Some(dbytes) = bytes.get(byte_range)
                     else {
                         error!("Index out of bounds when attempting to get bytes for Relative Displacement.");
                         return Err(DecodeError::InvalidModRM);
@@ -922,13 +925,17 @@ pub mod encoding {
 
             pub fn from_byte_relative(address: Offset, opcode_length: usize, operand: &[u8;1]) -> Displacement {
                 let base = address.0 + opcode_length as u32 + operand.len() as u32;
-
-                let displacement = byte_to_double_with_sign_extend(*operand);
-                let displacement = u32::from_be_bytes(displacement);
-                debug!("Target = {displacement} + {base}");
-                let target = displacement + base;
-                debug!("Target: 0x{target:X}");
-                Displacement::Rel8(target as u8)
+                let displacement = operand[0];
+                if ((displacement & 0x80) >> 7) == 1 {
+                    let target = ((displacement as i8) as i32) + base as i32;
+                    debug!("Target = {displacement} + {base}");
+                    Displacement::Rel8(target as u8)
+                } 
+                else {
+                    let target = displacement as u32 + base as u32;
+                    debug!("Target = {displacement} + {base}");
+                    Displacement::Rel8(target as u8)
+                }
             }
 
             pub fn from_word_relative(address: Offset, opcode_length: usize, operand: &[u8;2]) -> Displacement {

@@ -1,0 +1,48 @@
+00000000: 31 C0                 xor eax, eax
+00000002: 01 C8                 add eax, ecx
+00000004: 01 D0                 add eax, edx
+00000006: 55                    push ebp
+00000007: 89 E5                 mov ebp, esp
+00000009: 52                    push edx
+0000000A: 51                    push ecx
+0000000B: B8 44 43 42 41        mov eax, 0x41424344
+00000010: 8B 95 08 00 00 00     mov edx, [ ebp + 0x00000008 ]
+00000016: 8B 8D 0C 00 00 00     mov ecx, [ ebp + 0x0000000C ]
+0000001C: 01 D1                 add ecx, edx
+0000001E: 89 C8                 mov eax, ecx
+00000020: 5A                    pop edx
+00000021: 59                    pop ecx
+00000022: 5D                    pop ebp
+00000023: C2 08 00              retn 0x0008
+00000026: 89 7E FC              mov [ esi + 0xFFFFFFFC ], edi
+00000029: 55                    push ebp
+0000002A: 89 E5                 mov ebp, esp
+0000002C: 52                    push edx
+0000002D: 51                    push ecx
+0000002E: 39 D1                 cmp ecx, edx
+00000030: 74 0F                 jz offset_00000041h
+00000032: B8 44 43 42 41        mov eax, 0x41424344
+00000037: 8B 55 08              mov edx, [ ebp + 0x00000008 ]
+0000003A: 8B 4D 0C              mov ecx, [ ebp + 0x0000000C ]
+0000003D: 01 D1                 add ecx, edx
+0000003F: 89 C8                 mov eax, ecx
+00000041: 5A                    pop edx
+00000042: 59                    pop ecx
+00000043: 5D                    pop ebp
+00000044: C2 08 00              retn 0x0008
+00000047: 55                    push ebp
+00000048: 57                    push edi
+00000049: C3                    retn
+0000004A: 89 38                 mov [ eax ], edi
+0000004C: 55                    push ebp
+0000004D: 57                    push edi
+0000004E: 55                    push ebp
+0000004F: EB F9                 jmp offset_0000004Ah
+00000051: 0F                    db 0x0F
+00000052: AE                    db 0xAE
+00000053: FE                    db 0xFE
+00000054: 8D                    db 0x8D
+00000055: F9                    db 0xF9
+00000056: E8                    db 0xE8
+00000057: 00                    db 0x00
+00000058: 00                    db 0x00
