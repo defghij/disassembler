@@ -36,75 +36,46 @@ pub enum DecodeError {
 }
 
 
-#[allow(unused)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Bytes {
+
     /// Bytes representing a decoded instruction.
     Decoded { 
         bytes: Vec<u8>,
         instruction: Instruction,
     },
+
     /// An unknown byte or opcode
     Uknown(u8),
+
     /// An illegal instruction. Currently, only a single bytes.
-    Illegal(u8),
+    _Illegal(u8),
     None
 }
-#[allow(unused)]
 impl Bytes {
-    pub fn decoded_successfully(&self) -> bool {
-        match self {
-            Bytes::Uknown(_) | Bytes::Illegal(_) | Bytes::None => false,
-            _ => true
-        }
-    }
 
-    pub fn get_instruction(&self) -> Option<Instruction> {
-        match self {
-            Bytes::Decoded { bytes, instruction } => Some(instruction.clone()),
-            _ => None
-        }
-    }
-
-    pub fn get_bytes(&self) -> Option<Instruction> {
-        match self {
-            Bytes::Decoded { bytes, instruction } => Some(instruction.clone()),
-            _ => None
-        }
-    }
-
-    fn raw_bytes(&self) -> Vec<u8> {
-        match self {
-            Bytes::Decoded { bytes, instruction: _ } => bytes.to_vec(),
-            Bytes::Uknown(byte) | Bytes::Illegal(byte) => vec![byte.clone()],
-            Bytes::None => Vec::new()
-        }
-    }
-
-    pub fn bytes(&self) -> String {
-        self.raw_bytes()
-            .iter().map(|b| format!("{b:02X}") )
-            .collect::<Vec<String>>()
-            .join(" ")
-    }
-
-    pub fn length(&self) -> usize {
-        self.raw_bytes().len()
-    }
-
+    /// This is the primary function responsible for combining observed bytes with a decode rule
+    /// into an [Instruction] suitable for output as a collection of [Bytes]. 
+    ///
+    /// - *offset*: An [Offset] which indicates the location this set of byte(s) where found. This
+    /// is used in the creation of relative displacements or labels.
+    /// - *bytes*: a set of bytes at least as large the instruction on is trying to decode.
+    /// - *rule*: A [DecodeRule] to act as the transformation check as to whether a set of bytes
+    /// can be interpreted as an [Instruction] and returned as [Bytes].
+    ///
+    /// This function only returns [Bytes::Decoded] when a set of bytes and a [DecodeRule] are
+    /// compatible. Otherwise it returns a [DecodeError].
+    ///
+    /// This function does not panic. All edge-cases return a [DecodeError]. This can make
+    /// debugging decode misses painful.
     pub fn from(location: Offset, bytes: &[u8], rule: DecodeRule) -> Result<Bytes, DecodeError> {
         if bytes.len() == 0 { return Err(DecodeError::NoBytesPresent); }
-        let invalid = Bytes::Uknown(bytes[0]);
 
-        let (mnemonic, prefix, op_code, extensions, op_encode, addr_modes) = rule.separate();
+        let (mnemonic, _prefix, op_code, extensions, op_encoding, _addr_modes) = rule.separate();
 
         let opcode: u8 = op_code.0[0];
         let opcode_length = rule.op_code().len();
         let prefix = if rule.1.is_some() { 1 } else { 0 };
-        let mut modrm_idx = 0;
-        let mut sib_idx   = 0;
-        let mut disp_idx  = 0;
-        let mut disp_len  = 0;
         let mut imm_idx   = 0;
         let mut instruction_length = prefix + opcode_length;
 
@@ -114,7 +85,7 @@ impl Bytes {
         }
 
         let modrm = if rule.modrm_required() {
-            modrm_idx = instruction_length; // zero indexing
+            let modrm_idx = instruction_length; // zero indexing
             instruction_length += 1;
             let modrm = rule.modrm_byte(bytes[modrm_idx])?;
             rule.validate_addressing_mode(modrm)?;
@@ -122,21 +93,22 @@ impl Bytes {
         } else { None };
 
         let sib = if modrm.is_some_and(|m| m.precedes_sib_byte()) {
-            sib_idx = instruction_length; // zero indexing
+            let sib_idx = instruction_length; // zero indexing
             instruction_length += 1;
             let sib = Sib::sib(bytes, sib_idx)?;
             Some(sib)
         } else { None };
 
-        disp_idx = instruction_length;
+        let disp_idx = instruction_length;
 
         
 
         //let bytes_remaining = modrm.bytes_remaining(sib);
 
         let mut instruction = Instruction::new(mnemonic);
+        debug!("OpEncoding: {op_encoding:?}");
 
-        let instruction = match op_encode {
+        let instruction = match op_encoding {
             OpEn::O  => {
                 // All Single byte OpEn::O instructions _should have one and only one extension
                 // "/rd"
@@ -202,11 +174,6 @@ impl Bytes {
             }
             OpEn::D  => {
                 let width = rule.len().0 - opcode_length;
-                debug!("location: 0x{:X}", location.to_pointer());
-                debug!("Displacement Byte Width: {width}");
-                debug!("Opcode Length: {opcode_length}");
-                debug!("width: {width}");
-                debug!("bytes: {}", bytes.iter().map(|c| format!("0x{c:X} ")).collect::<String>() );
 
                 let displacement = Displacement::from_relative(bytes, location, opcode_length, width)?;
                 instruction_length += displacement.len();
@@ -242,14 +209,13 @@ impl Bytes {
                 }
             }
             OpEn::M  => { 
-                debug!("OpEn::M");
                 let Some(modrm) = modrm else { 
                     error!("This OpEn requires a MODRM byte but found None");
                     return Err(DecodeError::InvalidModRM);
                 };
                 
                 // All declared OpEn::M `DecodeRules` have an extension.
-                let Some(extensions) = extensions 
+                let Some(_extensions) = extensions 
                 else { 
                     error!("Expected OpCode extensions. None found");
                     return Err(DecodeError::InvalidOpCodeExtension)
@@ -265,7 +231,6 @@ impl Bytes {
                 }
             },
             OpEn::M1 => {
-                debug!("OpEn::M1");
                 let Some(modrm) = modrm else { 
                     error!("This OpEn requires a MODRM byte but found None");
                     return Err(DecodeError::InvalidModRM);
@@ -283,7 +248,6 @@ impl Bytes {
                 }
             },
             OpEn::MI => { 
-                debug!("OpEn::MI");
                 
                 // Take care of the M part of MI
                 /////////////////////////////////////////
@@ -293,7 +257,7 @@ impl Bytes {
                     return Err(DecodeError::InvalidModRM);
                 };
                 
-                let mut displacement = Displacement::None;
+                let displacement: Displacement;
 
                 if sib.as_ref().is_some_and(|s| s.base() == Register::EBP && modrm.0 == ModBits::OO ){
                     displacement = Displacement::disp32(bytes, disp_idx)?;
@@ -318,7 +282,6 @@ impl Bytes {
                 // Take care of the I part of MI
                 ///////////////////////////////////////////////
                 imm_idx = instruction_length;
-                debug!("imm_idx: {imm_idx}");
                 
                 if !extensions.as_ref().is_some_and(|exts| exts.len() == 2) { 
                     error!("Incorrect number of OpCode Extensions. Expected 2");
@@ -473,6 +436,13 @@ impl Bytes {
         Ok(instruction)
     }
 
+    /// Function responsible for turning a set of bytes into a memory [Operand] given an index
+    /// (idx), a modrm byte [ModRM], and an optional sib byte [`Option<Sib>`].
+    ///
+    /// If the provided bytes cannot be transformed into a [DecodeError] is returned. In the event
+    /// of a successful [Operand] creation, only one of two variants are returned
+    /// - [Operand::Register]
+    /// - [Operand::EffectiveAddress]
     pub fn decode_memory(bytes: &[u8], idx: usize, modrm: ModRM, sib: Option<Sib>) -> Result<Operand, DecodeError> {
         debug!("Mod bits: {:?}", modrm.0);
         let operand = match modrm.0 {
@@ -562,6 +532,11 @@ impl Bytes {
         Ok(operand)
     }
 
+    /// Function responsible for turning a set of bytes into an [Immediate] given an `idx` and a
+    /// set of [Extensions]. Note that the `idx` should be the position the immediate in the byte
+    /// slice. The function will index into the array so it should contain enough bytes to
+    /// transform into the appropriate immediate. The number of bytes needed is determined by the
+    /// [Vec<Extension>] and the presence of the appropriate immediate related [Extension].
     pub fn decode_immediate(bytes: &[u8], idx: usize, extensions: Vec<Extension>) -> Result<Immediate, DecodeError> {
         if extensions.contains(&Extension::IB) { 
             let Some(imm) = bytes.get(idx..idx + 1) 
@@ -591,6 +566,51 @@ impl Bytes {
             Err(DecodeError::DecodeFailure)
         }
     }
+
+    /*
+     * Quality of Life Functions
+     **************************************************************************/
+    
+    pub fn decoded_successfully(&self) -> bool {
+        match self {
+            Bytes::Uknown(_) | Bytes::_Illegal(_) | Bytes::None => false,
+            _ => true
+        }
+    }
+
+    pub fn get_instruction(&self) -> Option<Instruction> {
+        match self {
+            Bytes::Decoded { bytes: _, instruction } => Some(instruction.clone()),
+            _ => None
+        }
+    }
+
+    #[allow(unused)] // Not used in this project
+    pub fn get_bytes(&self) -> Option<Instruction> {
+        match self {
+            Bytes::Decoded { bytes: _, instruction } => Some(instruction.clone()),
+            _ => None
+        }
+    }
+
+    fn raw_bytes(&self) -> Vec<u8> {
+        match self {
+            Bytes::Decoded { bytes, instruction: _ } => bytes.to_vec(),
+            Bytes::Uknown(byte) | Bytes::_Illegal(byte) => vec![byte.clone()],
+            Bytes::None => Vec::new()
+        }
+    }
+
+    pub fn bytes(&self) -> String {
+        self.raw_bytes()
+            .iter().map(|b| format!("{b:02X}") )
+            .collect::<Vec<String>>()
+            .join(" ")
+    }
+
+    pub fn length(&self) -> usize {
+        self.raw_bytes().len()
+    }
 }
 impl Default for Bytes {
     fn default() -> Self { Bytes::None }
@@ -599,7 +619,7 @@ impl Display for Bytes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
             Bytes::Decoded { bytes: _ , instruction } => format!("{instruction}"),
-            Bytes::Uknown(b) | Bytes::Illegal(b)  => format!("db 0x{b:02X}"),
+            Bytes::Uknown(b) | Bytes::_Illegal(b)  => format!("db 0x{b:02X}"),
             Bytes::None => "".into()
         };
         write!(f, "{string}")
@@ -608,9 +628,11 @@ impl Display for Bytes {
 
 
 
-/// This structure attempts to encapsulates all the information
-/// the application may need when attempting to determine the 
-/// whether the byte(s) represent a valid instruction.
+/// This structure attempts to encapsulates all the information the application may need when
+/// attempting to determine the whether the byte(s) represent a valid instruction.
+///
+/// It also exposes functionality to validate different bytes that are needed to decode an
+/// instruction using the rule. This is derived from the Intel Manual.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DecodeRule(
     pub &'static str,             // 0
@@ -756,7 +778,9 @@ impl DecodeRule {
     }
 
     pub fn mnemonic(&self) -> &'static str { self.0 }
+
     pub fn op_code(&self) -> OpCode { self.2.clone() }
+
     pub fn extensions(&self) -> Option<Vec<Extension>> { 
         match &self.3 {
             None => None,
@@ -773,7 +797,9 @@ impl DecodeRule {
             },
         }
     }
+
     pub fn op_encoding(&self) -> OpEn { self.4.clone() }
+
     pub fn address_modes(&self) -> Option<AddressingModes> { self.5.clone() }
 }
 impl Display for DecodeRule {
