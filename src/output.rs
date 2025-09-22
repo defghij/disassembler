@@ -2,17 +2,21 @@ use std::fmt::Display;
 
 use tracing::{debug, error, info};
 
-use crate::{instruction::encoding::Sib, opcodes::DecodeRules};
 #[allow(unused)]
 use crate::{
     decode::{ Bytes, DecodeError },
+    opcodes::DecodeRules,
     instruction::{
-        Instruction,
-        encoding::operands::{Operand, Offset, Register},
+        Instruction,        
+        encoding::{
+            Sib,
+            operands::{Operand, Offset, Register},
+        }
     }
 };
 
 
+/// Set up tracing for easy debugging and errors. This is disabled in non-test builds.
 pub fn setup_tracing(level: tracing::level_filters::LevelFilter) {
     // construct a subscriber that prints formatted traces to stdout
     let subscriber = tracing_subscriber::fmt()
@@ -23,8 +27,6 @@ pub fn setup_tracing(level: tracing::level_filters::LevelFilter) {
         .with_thread_ids(false)
         .with_max_level(level)
         .without_time()
-        .with_test_writer()
-        .pretty()
         .finish();
 
     // use that subscriber to process traces emitted after this point
@@ -32,16 +34,24 @@ pub fn setup_tracing(level: tracing::level_filters::LevelFilter) {
 }
 
 
+/// Information related to a single line of output by the disassembler. This includes an `address`
+/// ([Offset]), whether it is `labeled`, and the bytes ([Bytes]) that exist at that that address.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Line {
     /// Labeled
     labeled: bool, 
     /// Address
     address: Offset, 
-    /// Instruction (Trait)
+    /// Instruction 
     instruction: Bytes
 }
 impl Line{
+
+    /// Formats the line using the specified width between the bytes and the instruction. That is,
+    /// this modifies the following aspect (labeled _variable_):
+    /// ```text
+    /// 00000000: FF FF<variable>call eax
+    /// ```
     fn string_with_width(&self, width: usize) -> String {
         let label = if self.labeled { format!("{}:\n", self.address) }
         else { "".into() };
@@ -66,6 +76,21 @@ impl Display for Line {
     }
 }
 
+/// Converts a collection of bytes, as &[u8] into a sequence of [Line]s that can be printed to the
+/// terminal. There is only one way to instantiate this type, shown below:
+///
+/// ```
+///     let bytes = include_bytes!("./tests/files/file1.o").to_vec();
+///     
+///     let output = Disassembly::from(bytes);
+///     
+///     println!("Disassembler output:\n{output}");
+/// ```
+///
+/// Creating this type will _always_ yield a new [Disassembly]. In the ideal case, that is where
+/// the set of bytes represent a set of instructions, each element of `lines` will be a [Line] that
+/// contains a [Bytes::Decoded]. In the degenerate case where the bytes are random, the resulting
+/// `lines` will contain [Bytes::Unknown].
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Disassembly {
     lines: Vec<Option<Line>>,
@@ -74,7 +99,7 @@ pub struct Disassembly {
 }
 #[allow(unused)]
 impl Disassembly {
-    pub fn new(bytes: usize) -> Disassembly {
+    fn new(bytes: usize) -> Disassembly {
         let mut lines: Vec<Option<Line>> = Vec::with_capacity(bytes);
         for _ in 0..bytes { lines.push(None); }
 
@@ -98,7 +123,7 @@ impl Disassembly {
 
     /// Add instruction to the Disassembly at the location pointed 
     /// by the internal Offset pointer
-    pub fn add(&mut self, i: Bytes) -> Result<(), DecodeError> {
+    fn add(&mut self, i: Bytes) -> Result<(), DecodeError> {
         let address = &self.pointer.clone();
         self.update(self.pointer.clone(),
             |line| { 
@@ -112,7 +137,9 @@ impl Disassembly {
         Ok(())
     }
 
-    pub fn label(&mut self, offset: Offset) -> Result<(), DecodeError> {
+    /// Modifies a [Line] in `lines` to indicate it should display a `label` when being formatted
+    /// as a string.
+    fn label(&mut self, offset: Offset) -> Result<(), DecodeError> {
         self.update(offset, |line| { 
                 line.labeled = true;
             })?;
@@ -121,6 +148,7 @@ impl Disassembly {
 }
 impl From<Vec<u8>> for Disassembly 
 {
+    /// Tranform a set of bytes into a [Disassembly].
     fn from(bytes: Vec<u8>) -> Self {
         let mut output = Disassembly::new(bytes.len()); // Largest output is one line per byte
         let pointer = 0; // All streams start at zero
