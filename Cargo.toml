@@ -2,7 +2,6 @@
 name        = "disassembler"
 version     = "0.1.0"
 edition     = "2024"
-author      = "Chuck Norris"
 description = "A simple disassembler for EN.695.744"
 
 [features] 
