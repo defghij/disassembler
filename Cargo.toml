@@ -5,6 +5,9 @@ edition     = "2024"
 author      = "Chuck Norris"
 description = "A simple disassembler for EN.695.744"
 
+[features] 
+instruction_compendium = []
+
 [dependencies]
 serde   = { version = "1.0.219", features = [ "derive" ] }
 clap    = { version = "4.5.47" }
@@ -14,3 +17,4 @@ rand    = { version = "0.9.2" }
 tracing = { version = "0.1", features = [ "release_max_level_off"] }
 tracing-test = { version = "0.2.5" }
 tracing-subscriber = { version = "0.3" }
+

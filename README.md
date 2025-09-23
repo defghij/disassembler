@@ -6,33 +6,18 @@ The commandline interface is simple and consists of a single argument `-i/--inpu
 
 ╭─⦗0⦘─⦗user@host:/path/to/disassembler⦘
 ╰─➤ ./target/release/disassembler -i ./src/tests/files/file1.o
-warning: unused manifest key: package.author
     Finished `release` profile [optimized] target(s) in 0.10s
      Running `target/release/disassembler -i ./src/tests/files/file1.o`
 00000000: 31 C0                 xor eax, eax
-00000002: 01 C8                 add eax, ecx
-00000004: 01 D0                 add eax, edx
-00000006: 55                    push ebp
-00000007: 89 E5                 mov ebp, esp
-00000009: 52                    push edx
-0000000A: 51                    push ecx
-0000000B: B8 44 43 42 41        mov eax, 0x41424344
-00000010: 8B 95 08 00 00 00     mov edx, [ ebp + 0x00000008 ]
-00000016: 8B 8D 0C 00 00 00     mov ecx, [ ebp + 0x0000000C ]
-0000001C: 01 D1                 add ecx, edx
-0000001E: 89 C8                 mov eax, ecx
-00000020: 5A                    pop edx
-00000021: 59                    pop ecx
-00000022: 5D                    pop ebp
+<... omitted ...>
 00000023: C2 08 00              retn 0x0008
 
 
-## From Source Directory
+## With Cargo
 
 ```bash
 ╭─⦗0⦘─⦗user@host:/path/to/disassembler⦘
 ╰─➤ cargo run --release -- -i ./src/tests/files/file1.o
-warning: unused manifest key: package.author
     Finished `release` profile [optimized] target(s) in 0.10s
      Running `target/release/disassembler -i ./src/tests/files/file1.o`
 <...
@@ -45,9 +30,24 @@ warning: unused manifest key: package.author
 ```bash
 ╭─⦗0⦘─⦗user@host:/path/to/disassembler⦘
 ╰─➤ cargo build --release
-warning: unused manifest key: package.author
     Finished `release` profile [optimized] target(s) in 0.13s
 ```
+
+## Instruction Compendium (Expanded Instruction Set)
+
+There is a feature that can be enabled to expand the set of instruction supported by the applications. They are locked behind the "instruction_compendium" feature flag. This added `imul`, `int3`, and some other instructions that were a part of instructor provided resources but were not listed as part of the **Supported Mnemonics** section. 
+
+The default build will still pass just with the reduces instruction set (computer?). To enable them build with with the following flags:
+
+```bash
+╭─⦗0⦘─⦗user@host:/path/to/disassembler⦘
+╰─➤ cargo build --features "instruction_compendium"
+   Compiling disassembler v0.1.0 (/home/norris/Documents/disassembler)
+    Finished `release` profile [optimized] target(s) in 15.13s
+```
+
+
+## Requirements
 
 Note, requires:
 - An _internet connection_
@@ -69,34 +69,25 @@ warning: unused manifest key: package.author
 
 running 25 tests
 test instruction::encoding::operands::rel32_calculation ... ok
-test instruction::encoding::operands::rel8_calculation ... ok
-test opcodes::access_internal_state ... ok
-test opcodes::retrieve_multiple_decode_rules ... ok
-test opcodes::retrieve_nonexistent_rule ... ok
-test opcodes::retrieve_single_decode_rule ... ok
-test output::multiple_line ... ok
-test output::single_line ... ok
-test output::unknown_byte ... ok
-test output::with_label ... ok
-test tests::instruction::compendium::immediate ... ok
-test tests::instruction::compendium::displacement ... ok
-test tests::instruction::compendium::m1_rm_and_one ... ok
-test tests::instruction::compendium::m_rm ... ok
-test tests::instruction::compendium::mi_rm_and_immediate ... ok
-test tests::instruction::compendium::mr_rm_and_reg ... ok
-test tests::instruction::compendium::misc_instructions ... ok
-test tests::instruction::compendium::opcode_and_immediate ... ok
-test tests::instruction::compendium::opcode ... ok
 test tests::instruction::compendium::rmi_regrm_and_immediate ... ok
-test tests::instruction::compendium::rm_reg_and_rm ... ok
-test tests::instruction::compendium::zero ... ok
-test tests::instruction::files::file1 ... ok
-test tests::instruction::files::file2 ... ok
+<... omitted ..>
 test tests::instruction::edge_cases::random_bytes_as_input ... ok
 
 test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
 ```
 
+# Environment
+
+- Rust:
+  - cargo 1.85.1 (d73d2caf9 2024-12-31)
+  - rustc 1.85.1 (4eb161250 2025-03-15)
+- System:
+  - OS: Ubuntu 22.04.5 LTS x86_64            
+  - Kernel: 6.8.0-79-generic                 
+  - Shell: bash 5.1.16                       
+  - Terminal: /dev/pts/0                     
+  - CPU: Intel Celeron N4000 (2) @ 2.600GHz  
+  - GPU: Intel GeminiLake [UHD Graphics 600] 
 
 # Requirements
 # 

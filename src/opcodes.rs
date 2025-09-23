@@ -159,8 +159,13 @@ static DECODE_RULES: RulesMap = phf_map! {
 
    "0x68" => &[ins1!("push",     [0x68], ["id"],                 OpEn::I                        )],
    "0x6A" => &[ins1!("push",     [0x6A], ["ib"],                 OpEn::I                        )],
+
+   #[cfg(feature = "instruction_compendium")]
    "0x6B" => &[ins3!("imul",     [0x6B], ["/r", "ib"],           OpEn::RMI, [0b00,0b01,0b10,0b11])],
+
+   #[cfg(feature = "instruction_compendium")]
    "0x69" => &[ins3!("imul",     [0x69], ["/r", "id"],           OpEn::RMI, [0b00,0b01,0b10,0b11])],
+
    "0x74" => &[ins1!("jz",       [0x74], ["cb", "rel8"],         OpEn::D                        )],
    "0x75" => &[ins1!("jnz",      [0x75], ["cb", "rel8"],         OpEn::D                        )],
    "0x81" => &[ins3!("add",      [0x81], ["/0", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),
@@ -176,7 +181,10 @@ static DECODE_RULES: RulesMap = phf_map! {
     "0x8D" => &[ins3!("lea",     [0x8D], ["/r"],                 OpEn::RM, [0b00,0b01,0b10]     )],
     "0x8F" => &[ins3!("pop",     [0x8F], ["/0"],                 OpEn::M,  [0b00,0b01,0b10,0b11])],
     "0x90" => &[ins0!("nop",     [0x90],                         OpEn::ZO                       )],
+
+    #[cfg(feature = "instruction_compendium")]
     "0x99" => &[ins0!("cdq",     [0x99],                         OpEn::ZO                       )],
+
     // These two instruction doesn't actually have an extension. But assignment states to treat the
     // MOFF32 operand as an IMM32, so we encode that as an extension
     "0xA1" => &[ins1!("mov",     [0xA1], ["id"],                 OpEn::FD                       )],
@@ -193,11 +201,18 @@ static DECODE_RULES: RulesMap = phf_map! {
     "0xC7" => &[ins3!("mov",     [0xC7], ["/0", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11])],
     "0xCA" => &[ins1!("retf",    [0xCA], ["iw"],                 OpEn::I                        )],
     "0xCB" => &[ins0!("retf",    [0xCB],                         OpEn::ZO                       )],
+
+    #[cfg(feature = "instruction_compendium")]
     "0xCC" => &[ins0!("int3",    [0xCC],                         OpEn::ZO                       )],
+
+    #[cfg(feature = "instruction_compendium")]
     "0xCD" => &[ins1!("int",     [0xCC], ["ib"],                 OpEn::I                        )],
+
+    #[cfg(feature = "instruction_compendium")]
     "0xD1" => &[ins3!("sar",     [0xD1], ["/7"],                 OpEn::M1, [0b00,0b01,0b10,0b11]),
                 ins3!("sal",     [0xD1], ["/4"],                 OpEn::M1, [0b00,0b01,0b10,0b11]),
                 ins3!("shr",     [0xD1], ["/5"],                 OpEn::M1, [0b00,0b01,0b10,0b11])],
+
     "0xE8" => &[ins1!("call",    [0xE8], ["id"],                 OpEn::D                        )], 
     "0xE9" => &[ins1!("jmp",     [0xE9], ["id"],                 OpEn::D                        )],
     "0xEB" => &[ins1!("jmp",     [0xEB], ["ib"],                 OpEn::D                        )],
@@ -214,12 +229,3 @@ static DECODE_RULES: RulesMap = phf_map! {
     // This guy breaks the table formatting even more and she's unique, it'll be fine down here
     "0xF2" => &[ins2!("repne cmpsd", 0xF2, [0xA7],            OpEn::ZO                       )],
 };
-
-//ins3!("imul",     [0x6B], ["/r", "ib"],           OpEn::RMI, [0b00,0b01,0b10,0b11])],
-//ins3!("imul",     [0x69], ["/r", "id"],           OpEn::RMI, [0b00,0b01,0b10,0b11])],
-//ins0!("cdq",     [0x99],                         OpEn::ZO                       )],
-//ins0!("int3",    [0xCC],                         OpEn::ZO                       )],
-//ins1!("int",     [0xCC], ["ib"],                 OpEn::I                        )],
-//ins3!("sar",     [0xD1], ["/7"],                 OpEn::M1, [0b00,0b01,0b10,0b11]),
-//ins3!("sal",     [0xD1], ["/4"],                 OpEn::M1, [0b00,0b01,0b10,0b11]),
-//ins3!("shr",     [0xD1], ["/5"],                 OpEn::M1, [0b00,0b01,0b10,0b11])],

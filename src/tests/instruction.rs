@@ -120,7 +120,9 @@ pub mod compendium {
     #[test]
     fn zero() {
         let mapping: Vec<(&str, &[u8])> = vec![
+            #[cfg(feature = "instruction_compendium")]
             ("00000000: CC     int3", &[0xCC]),// not required by assignment
+            #[cfg(feature = "instruction_compendium")]
             ("00000000: 99     cdq",  &[0x99]), // not require by assignment
             ("00000000: C3     retn", &[0xC3]),
             ("00000000: CB     retf", &[0xCB]),
@@ -146,6 +148,7 @@ pub mod compendium {
     fn immediate() {
         let mapping: Vec<(&str, &[u8])> = vec![
             ("00000000: 68 DD CC BB AA     push 0xAABBCCDD",     &[0x68, 0xDD, 0xCC, 0xBB, 0xAA]),
+            #[cfg(feature = "instruction_compendium")]
             ("00000000: CD 03     int 0x03",                     &[0xCD, 0x03                  ]),
             ("00000000: 05 DD CC BB AA     add eax, 0xAABBCCDD", &[0x05, 0xDD, 0xCC, 0xBB, 0xAA]),
         ];
@@ -216,6 +219,7 @@ pub mod compendium {
             .for_each(|(s,b)| { check(s.to_string(),b); });
     }
 
+    #[cfg(feature = "instruction_compendium")]
     #[test]
     fn m1_rm_and_one() {
         let mapping: Vec<(&str, &[u8])> = vec![
@@ -286,6 +290,7 @@ pub mod compendium {
             .for_each(|(s,b)| { check(s.to_string(),b); });
     }
 
+    #[cfg(feature = "instruction_compendium")]
     #[test]
     fn rmi_regrm_and_immediate() {
         let mapping: Vec<(&str, &[u8])> = vec![
