@@ -44,7 +44,7 @@ The default build will still pass just with the reduces instruction set (compute
 ```bash
 ╭─⦗0⦘─⦗user@host:/path/to/disassembler⦘
 ╰─➤ cargo build --features "instruction_compendium"
-   Compiling disassembler v0.1.0 (/home/norris/Documents/disassembler)
+   Compiling disassembler v0.1.0 (/path/to/disassembler)
     Finished `release` profile [optimized] target(s) in 15.13s
 ```
 
