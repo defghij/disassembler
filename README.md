@@ -53,7 +53,7 @@ The commandline interface is simple and consists of a single argument `-i/--inpu
 
 There is a feature that can be enabled to expand the set of instruction supported by the application. They are locked behind the "instruction_compendium" feature flag. This added `imul`, `int3`, and some other instructions that were a part of instructor provided resources but were not listed as part of the **Supported Mnemonics** section. 
 
-The default build will still pass just with the reduces instruction set (computer?). To enable them build with with the following flags:
+The default build will still pass just with reduced instruction set (computer?). To enable them build with with the following flags:
 
 ```bash
 ╭─⦗0⦘─⦗user@host:/path/to/disassembler⦘
