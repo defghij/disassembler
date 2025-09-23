@@ -51,7 +51,7 @@ The commandline interface is simple and consists of a single argument `-i/--inpu
 
 ## Instruction Compendium (Expanded Instruction Set)
 
-There is a feature that can be enabled to expand the set of instruction supported by the applications. They are locked behind the "instruction_compendium" feature flag. This added `imul`, `int3`, and some other instructions that were a part of instructor provided resources but were not listed as part of the **Supported Mnemonics** section. 
+There is a feature that can be enabled to expand the set of instruction supported by the application. They are locked behind the "instruction_compendium" feature flag. This added `imul`, `int3`, and some other instructions that were a part of instructor provided resources but were not listed as part of the **Supported Mnemonics** section. 
 
 The default build will still pass just with the reduces instruction set (computer?). To enable them build with with the following flags:
 
