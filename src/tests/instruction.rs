@@ -1,20 +1,15 @@
 
 #[cfg(test)]
 pub mod files {
-    use std::path::Path;
+    //! Some file based tests. These are derived from the instructor provided files but are amended
+    //! slightly.
+    //!
+    //! Not tested here is a Large example of ~150k instructions. When manually testing against it,
+    //! this application does not panic nor yield any unknown bytes. So.. promising?
 
     use tracing_test::traced_test;
-    use tracing::{info, error, debug};
 
-    use crate::{instruction::encoding::{operands::Operand, Sib}, output::Disassembly};
-    #[allow(unused)]
-    use crate::{
-        output::setup_tracing,
-        decode::{
-            Bytes, DecodeRule
-        }, instruction::{encoding::operands::Offset, Instruction}, opcodes::DecodeRules,
-    };
-    use crate::input::get_bytes;
+    use crate::output::Disassembly;
 
     #[test]
     fn file1() {
@@ -66,115 +61,58 @@ pub mod files {
     }
 
 }
+
+#[cfg(test)]
+pub mod edge_cases {
+    use tracing_test::traced_test;
+    use rand::Rng; // Import the Rng trait
+
+    use crate::output::Disassembly;
+
+
+    fn generate_random_bytes(size: usize, rng: &mut rand::rngs::ThreadRng) -> Vec<u8> {
+        let mut random = vec![0u8; size];
+        rng.fill(&mut random[..]);  
+        random.to_vec()
+    }   
+
+    /// This test is here to help expose any possible panics in the application. That is, to verify
+    /// that byte streams yield a `Disassembly` output. By using random bytes I'm trying to fuzz my
+    /// application and induce panics.
+    #[test]
+    #[traced_test]
+    fn random_bytes_as_input() {
+        let mut rng = rand::rng();
+        (0..71).step_by(3) // prime bound with prime step.
+            .for_each(|i|{
+                let bytes = generate_random_bytes(i, &mut rng);
+                let output = Disassembly::from(bytes);
+
+                // We may have accidentally generated a valid instruction which would reduce the lin
+                // count. But we should not have generated that many instructions.
+                assert!(output.line_count() <= i);
+
+                // Check that output isn't empty. We would expect line_count to be around $i$ in
+                // length.
+                assert!((i/2) <= output.line_count());
+        });
+    }
+
+
+}
  
-//This contains tests from the course 
 #[cfg(test)]
 pub mod compendium {
-    use tracing_test::traced_test;
-    use tracing::{info, error, debug};
+    //! This contains tests from the course. This includes instructions that are not required by
+    //! the project. Specifically the `Instruction Encoding Compendium`. All 37 pages.
 
-    use crate::{instruction::encoding::{operands::Operand, Sib}, output::Disassembly};
-    #[allow(unused)]
-    use crate::{
-        output::setup_tracing,
-        decode::{
-            Bytes, DecodeRule
-        }, instruction::{encoding::operands::Offset, Instruction}, opcodes::DecodeRules,
-    };
+    use tracing_test::traced_test;
+    use crate::output::Disassembly;
 
     #[traced_test]
     fn check(expected: String, bytes: &[u8]) {
         assert!(bytes.len() >= 1);
 
-        //let mut output = Disassembly::new(10);
-        //let offset = Offset(0); // All test instructions start at Address Zero
-        //let Ok(rules) = DecodeRules::get(&bytes[0]) 
-            //else { error!("Encountered unexpected Opcode"); panic!() };
-
-        //info!("");
-        //info!("");
-        //info!("Checking\n:{expected}");
-        //info!("----------------------------------------");
-        
-        //for rule in rules { // We dont know which rule will decode into an instruction
-            //info!("");
-            //info!("Attempting Decode using rule: {rule:?}");
-            //info!("----------------------------------------");
-
-            //let (mut length, _fixed) = rule.len();
-            //debug!("Rule reported opcode length: {length}");
-
-            //let base = offset.0 as usize;
-
-            //let instruction = if rule.modrm_required() { // We must decode bytes beyond the first to determine length
-                //debug!("ModRM required for instruction decode");
-
-                //let modrm_location = rule.op_code().len();
-                //let Ok(modrm) = rule.modrm_byte(bytes[modrm_location]) else { continue };
-                //debug!("Got ModRM Byte: 0x{:X} = {modrm:?}", modrm.as_byte());
-
-                //let sib = if modrm.precedes_sib_byte() {
-                    //debug!("Attempting decode of SIB byte from 0x{:X}", bytes[modrm_location+1]);
-                    //let sib = Sib::try_from(bytes[modrm_location+1]);
-                    //if sib.is_err() { continue; } 
-                    //else { sib.ok() }
-                //} else { None };
-
-                //let Ok(bytes_remaining) = modrm.bytes_remaining(sib)
-                    //else { continue; };
-                //length += bytes_remaining;
-
-                //debug!("Instuction length updated: {length}");
-                //debug!("Grabbing byte range {:?} for decode attempt", (base..base+length));
-
-                //let Some(prospective_bytes) = bytes.get(base.. base + length)
-                       //else { error!("Test should have enough bytes for decoding instruction"); panic!() };
-
-                //let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
-
-                //let instruction = if decode_attempt.is_ok() { decode_attempt.expect("Ok due to conditional") }
-                    //else { info!("Decode unsuccessful"); continue };
-                
-                //instruction
-            //} 
-            //else { // We can know the length of the instruction _a priori_
-
-                //debug!("Rule reported true byte length: {length}");
-
-                //let Some(prospective_bytes) = bytes.get(0..length)
-                    //else { error!("Test should have enough bytes for decoding instruction"); panic!() };
-
-                //let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
-
-                //let instruction = if decode_attempt.is_ok() { decode_attempt.expect("Ok due to conditional") }
-                    //else { info!("Decode unsuccessful"); continue };
-
-                //instruction
-            //};
-
-            //info!("Instruction\n:{instruction:?}");
-
-            //if instruction.decoded_successfully() {
-                //info!("Decoded Instruction\n:{instruction:?}");
-                //output.add(instruction.clone())
-                    //.expect("This manually decoded instruction should be valid");
-                //if rule.can_make_label() {
-                        //let instruction = instruction
-                            //.get_instruction().expect("Should be a valid instruction");
-
-                    //let has_label_operand = instruction.operands.iter().any(|op| matches!(op, Operand::Label(_)));
-
-                    //if has_label_operand {
-                        //let label = instruction
-                            //.get_displacement_offset().expect("Should have label");
-
-                        //let _ = output.label(label); // Dont worry about the result in a test. We'll
-                                                     //// regularly add labels "beyond" range
-                    //}
-                //}
-                //break; 
-            //}
-        //}
         let output = Disassembly::from(bytes.to_vec());
         assert_eq!(output.to_string(), expected);
     }

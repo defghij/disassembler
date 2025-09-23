@@ -6,9 +6,10 @@ use clap::{
 };
 
 
+/// The CLI for the application
 fn path_from_cli() -> PathBuf {
     let args: ArgMatches = Command::new("disassemble")
-        .about("Utility to disassemble a subset of x86")
+        .about("Utility to disassemble a subset of x86 for EN.695.744")
         .version("0.1.0")
         .author("cnorri17@jh.edu")
         .arg(
@@ -33,10 +34,6 @@ pub fn read_bytes_from_cli() -> Result<Vec<u8>, std::io::Error> {
 
 pub fn get_bytes(path: PathBuf) -> Result<Vec<u8>, std::io::Error> {
     let bytes = std::fs::read(&path)?;
-
-    //println!("Read {} bytes from {}", 
-        //bytes.len(), 
-        //path.to_str().expect("File path should have been validated by Clap"));
 
     Ok(bytes)
 }

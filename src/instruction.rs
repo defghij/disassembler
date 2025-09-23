@@ -1,3 +1,30 @@
+//! Defines the shape of an [Instruction]. This includes operand encodings ([OpEn]), [Operand]s,
+//! [encoding::ModRM] and [encoding::Sib] bytes. 
+//!
+//! # [Instruction]
+//! This type used to represent decoded instructions in a format that can be transformed into a
+//! string for use in [Display].
+//!
+//! When constructing instructions from raw bytes it is this type that the results are combined and
+//! ultimately displayed to the user.
+//!
+//! # [OpEn]
+//! The operand encodings that are supported in this application. There are three sets. The first
+//! are required by the assignment and have no modifications imposed otherwise. The second type are
+//! modifications from the original encoding as specified by assignment. Specifically, treating
+//! `moff32` operands as `imm32`. The final kind are not required as part of the assignment but
+//! were added as part of the provided instruction encoding examples.
+//!
+//! # [encoding] 
+//! The encoding module contains all the data structures and enumerations required to restrict the
+//! kinds of [Instruction]s that can be created. These types are used in conjunction with
+//! [crate::decode::DecodeRule].
+//!
+//! The types contained there in are [encoding::ModRM], and [encoding::Sib]. In that module is the
+//! [encoding::operands] module which includes all the types used to encoding the different classes
+//! of operand. 
+
+
 use std::fmt::Display;
 
 use tracing::{debug, error};
@@ -11,6 +38,11 @@ use encoding::operands::{
     //Register
 };
 
+/// Representation of a Decoded Intruction suitable for being used in a [crate::output::Line] of [crate::output::Disassembly]
+/// 
+/// Prefix is the only optional fields. Mnemonic should be derived directly from the
+/// [crate::decode::DecodeRule]. All possible [Operand]s for the assignment should be
+/// representable. 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Instruction {
     pub prefix: Option<String>,
@@ -18,12 +50,17 @@ pub struct Instruction {
     pub operands: Vec<Operand>,
 } 
 impl Instruction {
+
+    /// Create a new instruction. _Requires_ a mnemonic. Note, this is _not_ checked against a
+    /// [crate::decode::DecodeRule].
     pub fn new(mnemonic: &'static str) -> Instruction {
         let mut i = Instruction::default();
         i.mnemonic = mnemonic;
         i
     }
 
+    /// Add an [Operand] to the [Instruction]. [Operand]s are formatted in output in the order they
+    /// are added. 
     pub fn add(&mut self, op: Operand) -> &mut Self {
         self.operands.push(op);
         self
@@ -41,7 +78,6 @@ impl Instruction {
     ///
     /// Specifically, this is only for instructions with the OpEn::D encoding.
     /// These will have only one operand.
-    #[allow(unused)] // Currently, only used in tests
     pub fn get_displacement_offset(&self) -> Option<Offset> {
         let offsets: Vec<Offset> = self.operands
             .iter()
@@ -60,7 +96,7 @@ impl Instruction {
         } else { None }
     }
 
-    #[allow(unused)] // Currently, not used. Remove in future if unused.
+    #[allow(unused)]
     fn convert_displacements_to_offsets(&self) -> bool {
         match self.mnemonic {
             "call" | "jmp" | "jz" | "jnz" | "jne" => true,
@@ -110,6 +146,7 @@ impl Display for Instruction {
 #[allow(unused)]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum OpEn {
+    // Required by Assignment
     RM, MR, MI,  M, I, 
     NP, ZO,  O, OI, D,
     // Treat Moffs as Imm32
@@ -146,11 +183,6 @@ impl OpEn {
 
     }
 
-}
-
-pub mod memory {
-    #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-    pub struct Memory {}
 }
 
 pub mod encoding {
@@ -206,8 +238,6 @@ pub mod encoding {
             ModBits::OO
         }
     }
-
-
 
     #[allow(unused)]
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -385,8 +415,11 @@ pub mod encoding {
     pub mod operands {
         use super::*;
 
-        /// Structure for use in [Operand] for capturing the structure of the operand so it can be
+        /// Type for use in [Operand] for capturing the structure of the operand so it can be
         /// transformed into a string for printing and displaying.
+        ///
+        /// This enum encapsulates all the ways this application supported decoding bytes into an
+        /// operand that is encoded by a [ModRM] and, optionally, a [Sib] byte.
         #[derive(Clone, Debug, PartialEq)]
         pub enum EffectiveAddress {
              /// reg
@@ -613,6 +646,8 @@ pub mod encoding {
             }
         }
 
+        /// Type used to validate and constraint the `scale` used to multiple an `index` register
+        /// in an [EffectiveAddress] operand.
         #[derive(Clone, Debug, PartialEq, Eq, Hash)]
         pub enum Scale { 
             One = 0, Two = 1, 
@@ -651,6 +686,7 @@ pub mod encoding {
             }
         }
 
+        /// The different classes of operands that are supported during instruction decode.
         #[allow(unused)]
         #[derive(Clone, Debug, PartialEq)]
         pub enum Operand {
@@ -787,7 +823,6 @@ pub mod encoding {
         }
 
         #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-        #[allow(unused)]
         pub enum Displacement {
             None,
             Rel8(u8), Rel16(u16), Rel32(u32),
@@ -1107,7 +1142,8 @@ pub mod encoding {
             assert_eq!(target, expected_a);
         }
 
-        #[allow(unused)]
+        /// Different Immediates that can constructed by a [Vec<u8>]
+        /// Note: [Immediate::Imm64] is not supported.
         #[derive(Clone, Debug, PartialEq, Eq, Hash)]
         pub enum Immediate {
             Imm8(Vec<u8>),
@@ -1166,6 +1202,9 @@ pub mod encoding {
     pub mod extensions {
         use super::*;
 
+        /// A set of Extensions suitable for use with [crate::opcodes::DecodeRules].
+        /// Includes basic functionality to query the contents to support decode logic. 
+        /// That is primarily verifying bytes as part of the instruction decode process.
         #[derive(Clone, Debug, PartialEq, Eq, Hash)]
         pub struct ExtSet(pub &'static [&'static str]);
         impl ExtSet {
@@ -1202,6 +1241,8 @@ pub mod encoding {
             }
         }
 
+        /// The supported opcode extensions supported by the disassembler. Note that this is
+        /// currently in correspondence with [crate::opcodes::DECODE_RULES].
         #[derive(Clone, Debug, PartialEq, Eq, Hash)]
         pub enum Extension {
             RW, RD,

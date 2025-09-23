@@ -145,9 +145,12 @@ impl Disassembly {
             })?;
         Ok(())
     }
+
+    pub fn line_count(&self) -> usize { self.lines.len() }
 }
 impl From<Vec<u8>> for Disassembly 
 {
+
     /// Tranform a set of bytes into a [Disassembly].
     fn from(bytes: Vec<u8>) -> Self {
         let mut output = Disassembly::new(bytes.len()); // Largest output is one line per byte
@@ -181,15 +184,24 @@ impl From<Vec<u8>> for Disassembly
                         debug!("ModRM required for instruction decode");
 
                         let modrm_idx: usize = rule.op_code().len();
-                        let modrm_byte = bytes[instruction_idx + modrm_idx];
+                        //let modrm_byte = bytes[instruction_idx + modrm_idx];
+                        let Some(modrm_byte) = bytes.get(instruction_idx + modrm_idx) else { 
+                                error!("Index out of bounds while attempting to get ModRM byte");
+                                continue
+                            };
+
                         debug!("MODRM byte {modrm_byte} at location: 0x{:X}", instruction_idx+modrm_idx);
-                        let Ok(modrm) = rule.modrm_byte(modrm_byte) else { continue };
+                        let Ok(modrm) = rule.modrm_byte(*modrm_byte) else { continue };
                         debug!("Got ModRM Byte: 0x{:X} = {modrm:?}", modrm.as_byte());
 
                         let sib = if modrm.precedes_sib_byte() {
-                            let sib_byte = bytes[instruction_idx + modrm_idx+1];
+                            let Some(sib_byte) = bytes.get(instruction_idx + modrm_idx+1) else {
+                                error!("Index out of bounds while attempting to get Sib byte");
+                                continue;
+                            };
+
                             debug!("Attempting decode of SIB byte from 0x{:X}", sib_byte);
-                            let sib = Sib::try_from(sib_byte);
+                            let sib = Sib::try_from(*sib_byte);
                             if sib.is_err() { continue; } 
                             else { sib.ok() }
                         } else { None };

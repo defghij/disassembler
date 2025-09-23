@@ -16,6 +16,13 @@ use super::{
     }
 };
 
+/* 
+ * The below four macros allow adding instruction encoding information from the Intel SDM in a
+ * tabular-like format and transform that into [DecodeRules] for use by the rest of the
+ * application.
+ ********************************************************************************************
+ */
+
 macro_rules! ins0 {
     ($Mnemonic:literal, $OpCodes:expr, $OpEn:expr) => {
         DecodeRule($Mnemonic, 
@@ -64,10 +71,10 @@ macro_rules! ins3 {
     };
 }
 
+/// Convenience type, and functions, to access the set of decode rules [DECODE_RULES].
 pub struct DecodeRules;
 impl DecodeRules {
 
-    #[allow(unused)]
     pub fn get(byte: &u8) -> Result<Rules, DecodeError> {
         match DECODE_RULES.get(&format!("0x{byte:02X}")) {
             Some(rules) => Ok(*rules),
@@ -112,7 +119,6 @@ fn retrieve_nonexistent_rule() {
 type Rules = &'static [DecodeRule];
 type RulesMap = Map<&'static str, Rules>;
 
-#[allow(unused)]
 static DECODE_RULES: RulesMap = phf_map! {
 //   Byte -->      Mnemonic       OpCode    Extensions         OpEncoding       Addressing Modes
     "0x01" => &[ins3!("add",      [0x01],       ["/r"],          OpEn::MR, [0b00,0b01,0b10,0b11])],
@@ -208,3 +214,12 @@ static DECODE_RULES: RulesMap = phf_map! {
     // This guy breaks the table formatting even more and she's unique, it'll be fine down here
     "0xF2" => &[ins2!("repne cmpsd", 0xF2, [0xA7],            OpEn::ZO                       )],
 };
+
+//ins3!("imul",     [0x6B], ["/r", "ib"],           OpEn::RMI, [0b00,0b01,0b10,0b11])],
+//ins3!("imul",     [0x69], ["/r", "id"],           OpEn::RMI, [0b00,0b01,0b10,0b11])],
+//ins0!("cdq",     [0x99],                         OpEn::ZO                       )],
+//ins0!("int3",    [0xCC],                         OpEn::ZO                       )],
+//ins1!("int",     [0xCC], ["ib"],                 OpEn::I                        )],
+//ins3!("sar",     [0xD1], ["/7"],                 OpEn::M1, [0b00,0b01,0b10,0b11]),
+//ins3!("sal",     [0xD1], ["/4"],                 OpEn::M1, [0b00,0b01,0b10,0b11]),
+//ins3!("shr",     [0xD1], ["/5"],                 OpEn::M1, [0b00,0b01,0b10,0b11])],

@@ -16,6 +16,8 @@ use crate::
         }
 };
 
+/// All the application specific errors that functions may return. 
+/// Not documented... Self-documenting code and what not.
 #[derive(Clone, Debug, PartialEq, Hash)]
 pub enum DecodeError {
     DecodeFailure,
@@ -36,6 +38,8 @@ pub enum DecodeError {
 }
 
 
+/// The type used to represent whether bytes where successfully Decoded or not. In either case,
+/// this type carries sufficient information to format output for a [crate::output::Line].
 #[derive(Clone, Debug, PartialEq)]
 pub enum Bytes {
 
@@ -712,8 +716,8 @@ impl DecodeRule {
         })
     }
 
-    /// Takes a [u8] and yields a Some([ModRM]) if the byte can be validated as a ModRM byte for the
-    /// particular [DecodeRule] that self describes. If is not valid, then a [None] is returned.
+    /// Takes a [u8] and yields a Ok([ModRM]) if the byte can be validated as a ModRM byte for the
+    /// particular [DecodeRule] that `self` describes. If is not valid, then a Err([DecodeError]) is returned.
     pub fn modrm_byte(&self, byte: u8) -> Result<ModRM, DecodeError> {
         let ext_set      = self.3.clone();
         let addr_mode    = self.5.clone(); 
@@ -770,6 +774,10 @@ impl DecodeRule {
         else { None }
     }
 
+    /// Function used to indicate whether the instruction described by the decode rule may create
+    /// labels.
+    ///
+    /// This should probably be encoded as part of structure. But alas, it was not so.
     pub fn can_make_label(&self) -> bool {
         match self.mnemonic() {
             "call" | "jmp" | "jz" | "jnz" => true,
