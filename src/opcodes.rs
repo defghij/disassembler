@@ -1,22 +1,14 @@
-use phf::{phf_map, Map};
+use phf::{Map, phf_map};
 
 use super::{
-    decode::{
-        DecodeRule,
-        DecodeError,
-    },
+    decode::{DecodeError, DecodeRule},
     instruction::{
         OpEn,
-        encoding::{
-            Prefix,
-            AddressingModes,
-            OpCode,
-            extensions::ExtSet
-        },
-    }
+        encoding::{AddressingModes, OpCode, Prefix, extensions::ExtSet},
+    },
 };
 
-/* 
+/*
  * The below four macros allow adding instruction encoding information from the Intel SDM in a
  * tabular-like format and transform that into [DecodeRules] for use by the rest of the
  * application.
@@ -25,48 +17,45 @@ use super::{
 
 macro_rules! ins0 {
     ($Mnemonic:literal, $OpCodes:expr, $OpEn:expr) => {
-        DecodeRule($Mnemonic, 
-                   None, 
-                   OpCode(&$OpCodes), 
-                   None,  
-                   $OpEn, 
-                   None
-        )
+        DecodeRule($Mnemonic, None, OpCode(&$OpCodes), None, $OpEn, None)
     };
 }
 
 macro_rules! ins1 {
     ($Mnemonic:literal, $OpCodes:expr, $extensions:expr, $OpEn:expr) => {
-        DecodeRule($Mnemonic,
-                   None, 
-                   OpCode(&$OpCodes), 
-                   Some(ExtSet(&$extensions)), 
-                   $OpEn, 
-                   None
+        DecodeRule(
+            $Mnemonic,
+            None,
+            OpCode(&$OpCodes),
+            Some(ExtSet(&$extensions)),
+            $OpEn,
+            None,
         )
     };
 }
 
 macro_rules! ins2 {
     ($Mnemonic:literal, $Prefix:expr, $OpCodes:expr, $OpEn:expr) => {
-        DecodeRule($Mnemonic, 
-                   Some(Prefix($Prefix)), 
-                   OpCode(&$OpCodes), 
-                   None,  
-                   $OpEn, 
-                   None
+        DecodeRule(
+            $Mnemonic,
+            Some(Prefix($Prefix)),
+            OpCode(&$OpCodes),
+            None,
+            $OpEn,
+            None,
         )
     };
 }
 
 macro_rules! ins3 {
     ($Mnemonic:literal, $OpCodes:expr, $extensions:expr, $OpEn:expr, $AddrModes:expr) => {
-        DecodeRule($Mnemonic, 
-                   None, 
-                   OpCode(&$OpCodes), 
-                   Some(ExtSet(&$extensions)),  
-                   $OpEn, 
-                   Some(AddressingModes(&$AddrModes))
+        DecodeRule(
+            $Mnemonic,
+            None,
+            OpCode(&$OpCodes),
+            Some(ExtSet(&$extensions)),
+            $OpEn,
+            Some(AddressingModes(&$AddrModes)),
         )
     };
 }
@@ -74,11 +63,10 @@ macro_rules! ins3 {
 /// Convenience type, and functions, to access the set of decode rules [DECODE_RULES].
 pub struct DecodeRules;
 impl DecodeRules {
-
     pub fn get(byte: &u8) -> Result<Rules, DecodeError> {
         match DECODE_RULES.get(&format!("0x{byte:02X}")) {
             Some(rules) => Ok(*rules),
-            None => Err(DecodeError::UnknownOpcode)
+            None => Err(DecodeError::UnknownOpcode),
         }
     }
 }
@@ -86,21 +74,23 @@ impl DecodeRules {
 #[test]
 fn access_internal_state() {
     let rules = DecodeRules::get(&0x01);
-    assert!(
-        rules.is_ok_and(|rules| {
-            assert!(rules.len() == 1);
-            let rule = rules.get(0)
-                .expect("Should be only one element");
-            rule.0 == "add"
-        })
-    );
+    assert!(rules.is_ok_and(|rules| {
+        assert!(rules.len() == 1);
+        let rule = rules.get(0).expect("Should be only one element");
+        rule.0 == "add"
+    }));
 }
 
 #[test]
 fn retrieve_single_decode_rule() {
     let rules = DecodeRules::get(&0x01);
-    let expected: &'static [DecodeRule] = 
-        &[ins3!("add",      [0x01],       ["/r"],       OpEn::MR, [0b00,0b01,0b10,0b11])];
+    let expected: &'static [DecodeRule] = &[ins3!(
+        "add",
+        [0x01],
+        ["/r"],
+        OpEn::MR,
+        [0b00, 0b01, 0b10, 0b11]
+    )];
     assert_eq!(rules, Ok(expected));
 }
 
@@ -115,7 +105,7 @@ fn retrieve_nonexistent_rule() {
     let rules = DecodeRules::get(&0x00);
     assert!(rules.is_err_and(|e| e == DecodeError::UnknownOpcode));
 }
-                           
+
 type Rules = &'static [DecodeRule];
 type RulesMap = Map<&'static str, Rules>;
 
@@ -140,21 +130,21 @@ static DECODE_RULES: RulesMap = phf_map! {
    "0x31" => &[ins3!("xor",      [0x31],       ["/r"],           OpEn::MR, [0b00,0b01,0b10,0b11])],
    "0x33" => &[ins3!("xor",      [0x33],       ["/r"],           OpEn::RM, [0b00,0b01,0b10,0b11])],
    "0x35" => &[ins1!("xor",      [0x35],       ["id"],           OpEn::I                        )],
-   "0x39" => &[ins3!("cmp",      [0x39],       ["/r"],           OpEn::MR, [0b00,0b01,0b10,0b11])], 
-   "0x3B" => &[ins3!("cmp",      [0x3B],       ["/r"],           OpEn::RM, [0b00,0b01,0b10,0b11])], 
-   "0x3D" => &[ins1!("cmp",      [0x3D],       ["id"],           OpEn::I                        )], 
+   "0x39" => &[ins3!("cmp",      [0x39],       ["/r"],           OpEn::MR, [0b00,0b01,0b10,0b11])],
+   "0x3B" => &[ins3!("cmp",      [0x3B],       ["/r"],           OpEn::RM, [0b00,0b01,0b10,0b11])],
+   "0x3D" => &[ins1!("cmp",      [0x3D],       ["id"],           OpEn::I                        )],
 
    //EAX      ECX      EDX      EBX      ESP      EBP      ESI       EDI
-   "0x40" | "0x41" | "0x42" | "0x43" | "0x44" | "0x45" | "0x46" | "0x47" => 
+   "0x40" | "0x41" | "0x42" | "0x43" | "0x44" | "0x45" | "0x46" | "0x47" =>
              &[ins1!("inc",      [0x40],       ["+rd"],          OpEn::O                        )],
 
-   "0x48" | "0x49" | "0x4A" | "0x4B" | "0x4C" | "0x4D" | "0x4E" | "0x4F" => 
-             &[ins1!("dec",      [0x48],       ["+rd"],          OpEn::O                        )], 
+   "0x48" | "0x49" | "0x4A" | "0x4B" | "0x4C" | "0x4D" | "0x4E" | "0x4F" =>
+             &[ins1!("dec",      [0x48],       ["+rd"],          OpEn::O                        )],
 
-   "0x50" | "0x51" | "0x52" | "0x53" | "0x54" | "0x55" | "0x56" | "0x57" => 
+   "0x50" | "0x51" | "0x52" | "0x53" | "0x54" | "0x55" | "0x56" | "0x57" =>
              &[ins1!("push",     [0x50],       ["+rd"],          OpEn::O                        )],
 
-   "0x58" | "0x59" | "0x5A" | "0x5B" | "0x5C" | "0x5D" | "0x5E" | "0x5F" => 
+   "0x58" | "0x59" | "0x5A" | "0x5B" | "0x5C" | "0x5D" | "0x5E" | "0x5F" =>
              &[ins1!("pop",      [0x58],       ["+rd"],          OpEn::O                        )],
 
    "0x68" => &[ins1!("push",     [0x68], ["id"],                 OpEn::I                        )],
@@ -174,7 +164,7 @@ static DECODE_RULES: RulesMap = phf_map! {
                ins3!("or",       [0x81], ["/1", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),
                ins3!("sub",      [0x81], ["/5", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),
                ins3!("xor",      [0x81], ["/6", "id"],           OpEn::MI, [0b00,0b01,0b10,0b11]),
-    ], 
+    ],
     "0x85" => &[ins3!("test",    [0x85], ["/r"],                 OpEn::MR, [0b00,0b01,0b10,0b11])],
     "0x89" => &[ins3!("mov",     [0x89], ["/r"],                 OpEn::MR, [0b00,0b01,0b10,0b11])],
     "0x8B" => &[ins3!("mov",     [0x8B], ["/r"],                 OpEn::RM, [0b00,0b01,0b10,0b11])],
@@ -193,7 +183,7 @@ static DECODE_RULES: RulesMap = phf_map! {
     "0xA5" => &[ins0!("movsd",   [0xA5],                         OpEn::ZO                       )],
     "0xA9" => &[ins1!("test",    [0xA9], ["id"],                 OpEn::I                        )],
 
-    "0xB8" | "0xB9" | "0xBA" | "0xBB" | "0xBC" | "0xBD" | "0xBE" | "0xBF" => 
+    "0xB8" | "0xB9" | "0xBA" | "0xBB" | "0xBC" | "0xBD" | "0xBE" | "0xBF" =>
               &[ins1!("mov",     [0xB8], ["+rd", "id"],          OpEn::OI                       )],
 
     "0xC2" => &[ins1!("retn",    [0xC2], ["iw"],                 OpEn::I                        )],
@@ -213,16 +203,16 @@ static DECODE_RULES: RulesMap = phf_map! {
                 ins3!("sal",     [0xD1], ["/4"],                 OpEn::M1, [0b00,0b01,0b10,0b11]),
                 ins3!("shr",     [0xD1], ["/5"],                 OpEn::M1, [0b00,0b01,0b10,0b11])],
 
-    "0xE8" => &[ins1!("call",    [0xE8], ["id"],                 OpEn::D                        )], 
+    "0xE8" => &[ins1!("call",    [0xE8], ["id"],                 OpEn::D                        )],
     "0xE9" => &[ins1!("jmp",     [0xE9], ["id"],                 OpEn::D                        )],
     "0xEB" => &[ins1!("jmp",     [0xEB], ["ib"],                 OpEn::D                        )],
-    "0xF7" => &[ins3!("idiv",    [0xF7], ["/7"],                 OpEn::M,  [0b00,0b01,0b10,0b11]), 
+    "0xF7" => &[ins3!("idiv",    [0xF7], ["/7"],                 OpEn::M,  [0b00,0b01,0b10,0b11]),
                 ins3!("not",     [0xF7], ["/2"],                 OpEn::M,  [0b00,0b01,0b10,0b11]),
                 ins3!("test",    [0xF7], ["/0","id"],            OpEn::MI, [0b00,0b01,0b10,0b11]),
     ],
     "0xFF" => &[ins3!("call",    [0xFF], ["/2"],                 OpEn::M,  [0b00,0b01,0b10,0b11]),
-                ins3!("dec",     [0xFF], ["/1"],                 OpEn::M,  [0b00,0b01,0b10,0b11]), 
-                ins3!("inc",     [0xFF], ["/0"],                 OpEn::M,  [0b00,0b01,0b10,0b11]), 
+                ins3!("dec",     [0xFF], ["/1"],                 OpEn::M,  [0b00,0b01,0b10,0b11]),
+                ins3!("inc",     [0xFF], ["/0"],                 OpEn::M,  [0b00,0b01,0b10,0b11]),
                 ins3!("jmp",     [0xFF], ["/4"],                 OpEn::M,  [0b00,0b01,0b10,0b11]),
                 ins3!("push",    [0xFF], ["/6"],                 OpEn::M,  [0b00,0b01,0b10,0b11]),
     ],

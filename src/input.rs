@@ -1,10 +1,5 @@
+use clap::{Arg, ArgMatches, Command};
 use std::path::PathBuf;
-use clap::{
-    Arg, 
-    ArgMatches,
-    Command,
-};
-
 
 /// The CLI for the application
 fn path_from_cli() -> PathBuf {
@@ -18,10 +13,12 @@ fn path_from_cli() -> PathBuf {
                 .short('i')
                 .value_parser(clap::value_parser!(PathBuf))
                 .required(true)
-                .help("Binary file to disassemble")
-        ).get_matches();
+                .help("Binary file to disassemble"),
+        )
+        .get_matches();
 
-    let path: PathBuf = args.get_one::<PathBuf>("file")
+    let path: PathBuf = args
+        .get_one::<PathBuf>("file")
         .expect("File should be a required argument that is validated by Clap")
         .clone();
     path
@@ -37,5 +34,3 @@ pub fn get_bytes(path: PathBuf) -> Result<Vec<u8>, std::io::Error> {
 
     Ok(bytes)
 }
-
-

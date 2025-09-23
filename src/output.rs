@@ -4,17 +4,16 @@ use tracing::{debug, error, info};
 
 #[allow(unused)]
 use crate::{
-    decode::{ Bytes, DecodeError },
-    opcodes::DecodeRules,
+    decode::{Bytes, DecodeError},
     instruction::{
-        Instruction,        
+        Instruction,
         encoding::{
             Sib,
-            operands::{Operand, Offset, Register},
-        }
-    }
+            operands::{Offset, Operand, Register},
+        },
+    },
+    opcodes::DecodeRules,
 };
-
 
 /// Set up tracing for easy debugging and errors. This is disabled in non-test builds.
 pub fn setup_tracing(level: tracing::level_filters::LevelFilter) {
@@ -33,41 +32,48 @@ pub fn setup_tracing(level: tracing::level_filters::LevelFilter) {
     tracing::subscriber::set_global_default(subscriber).expect("Subscriber setup should succeed");
 }
 
-
 /// Information related to a single line of output by the disassembler. This includes an `address`
 /// ([Offset]), whether it is `labeled`, and the bytes ([Bytes]) that exist at that that address.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Line {
     /// Labeled
-    labeled: bool, 
+    labeled: bool,
     /// Address
-    address: Offset, 
-    /// Instruction 
-    instruction: Bytes
+    address: Offset,
+    /// Instruction
+    instruction: Bytes,
 }
-impl Line{
-
+impl Line {
     /// Formats the line using the specified width between the bytes and the instruction. That is,
     /// this modifies the following aspect (labeled _variable_):
     /// ```text
     /// 00000000: FF FF<variable>call eax
     /// ```
     fn string_with_width(&self, width: usize) -> String {
-        let label = if self.labeled { format!("{}:\n", self.address) }
-        else { "".into() };
+        let label = if self.labeled {
+            format!("{}:\n", self.address)
+        } else {
+            "".into()
+        };
 
         let bytes = self.instruction.bytes();
         let address = &self.address.0;
         let instruction = self.instruction.to_string();
         let width = width + 4;
 
-        format!("{label}{address:08X}: {bytes: <width$} {instruction}", width = width)
+        format!(
+            "{label}{address:08X}: {bytes: <width$} {instruction}",
+            width = width
+        )
     }
 }
 impl Display for Line {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let label = if self.labeled { format!("{}h:\n", self.address) }
-        else { "".into() };
+        let label = if self.labeled {
+            format!("{}h:\n", self.address)
+        } else {
+            "".into()
+        };
 
         let bytes = self.instruction.bytes();
         let instruction = self.instruction.to_string();
@@ -95,212 +101,238 @@ impl Display for Line {
 pub struct Disassembly {
     lines: Vec<Option<Line>>,
     pointer: Offset,
-    width: usize
+    width: usize,
 }
 #[allow(unused)]
 impl Disassembly {
     fn new(bytes: usize) -> Disassembly {
         let mut lines: Vec<Option<Line>> = Vec::with_capacity(bytes);
-        for _ in 0..bytes { lines.push(None); }
+        for _ in 0..bytes {
+            lines.push(None);
+        }
 
-        Disassembly {lines, ..Default::default() }
+        Disassembly {
+            lines,
+            ..Default::default()
+        }
     }
 
     fn update<F>(&mut self, offset: Offset, update: F) -> Result<(), DecodeError>
-        where F: FnOnce(&mut Line)
-    { 
+    where
+        F: FnOnce(&mut Line),
+    {
         let insert_line = self.lines.get_mut(offset.0 as usize);
         if insert_line.is_some() {
             let line = insert_line.unwrap();
             let l = line.get_or_insert_with(|| Line::default());
             update(l);
             Ok(())
-        } 
-        else { 
-            Err(DecodeError::InvalidAddress(offset.0) )
+        } else {
+            Err(DecodeError::InvalidAddress(offset.0))
         }
     }
 
-    /// Add instruction to the Disassembly at the location pointed 
+    /// Add instruction to the Disassembly at the location pointed
     /// by the internal Offset pointer
     fn add(&mut self, i: Bytes) -> Result<(), DecodeError> {
         let address = &self.pointer.clone();
-        self.update(self.pointer.clone(),
-            |line| { 
-                line.instruction = i.clone(); 
-                line.address = address.clone();
-            })?;
-                              
+        self.update(self.pointer.clone(), |line| {
+            line.instruction = i.clone();
+            line.address = address.clone();
+        })?;
+
         self.pointer.increment(i.length() as u32);
         let width = format!("{}", i.bytes()).len();
-        if self.width < width { self.width = width; }
+        if self.width < width {
+            self.width = width;
+        }
         Ok(())
     }
 
     /// Modifies a [Line] in `lines` to indicate it should display a `label` when being formatted
     /// as a string.
     fn label(&mut self, offset: Offset) -> Result<(), DecodeError> {
-        self.update(offset, |line| { 
-                line.labeled = true;
-            })?;
+        self.update(offset, |line| {
+            line.labeled = true;
+        })?;
         Ok(())
     }
 
-    pub fn line_count(&self) -> usize { self.lines.len() }
+    pub fn line_count(&self) -> usize {
+        self.lines.len()
+    }
 }
-impl From<Vec<u8>> for Disassembly 
-{
-
+impl From<Vec<u8>> for Disassembly {
     /// Tranform a set of bytes into a [Disassembly].
     fn from(bytes: Vec<u8>) -> Self {
         let mut output = Disassembly::new(bytes.len()); // Largest output is one line per byte
         let pointer = 0; // All streams start at zero
         let mut offset = Offset(pointer);
 
-
         while offset.to_pointer() < bytes.len() {
             let mut instruction = Bytes::Uknown(bytes[offset.to_pointer()]); // base case is byte is unknown
 
             let opcode_byte = &bytes[offset.to_pointer()];
             debug!("Found tentative OpCode: 0x{opcode_byte:X}");
-            
-            let Ok(rules) = DecodeRules::get(opcode_byte)
-                else {
-                    error!("Unexpected OpCode byte: 0x{opcode_byte:X}");
-                    let _ = output.add(instruction.clone());
-                    offset.increment(1 /*byte*/);
-                    continue;
-                }; 
+
+            let Ok(rules) = DecodeRules::get(opcode_byte) else {
+                error!("Unexpected OpCode byte: 0x{opcode_byte:X}");
+                let _ = output.add(instruction.clone());
+                offset.increment(1 /*byte*/);
+                continue;
+            };
 
             let instruction_idx = offset.to_pointer();
             debug!("Instruction Index: 0x{instruction_idx:X}");
 
-            for rule in rules { // We dont know which rule will decode into an instruction
+            for rule in rules {
+                // We dont know which rule will decode into an instruction
                 debug!("Trying rule: {rule}");
                 let (min_length, _final) = rule.len();
 
                 instruction = match rule.modrm_required() {
-                    true => { 
+                    true => {
                         debug!("ModRM required for instruction decode");
 
                         let modrm_idx: usize = rule.op_code().len();
                         //let modrm_byte = bytes[instruction_idx + modrm_idx];
-                        let Some(modrm_byte) = bytes.get(instruction_idx + modrm_idx) else { 
-                                error!("Index out of bounds while attempting to get ModRM byte");
-                                continue
-                            };
+                        let Some(modrm_byte) = bytes.get(instruction_idx + modrm_idx) else {
+                            error!("Index out of bounds while attempting to get ModRM byte");
+                            continue;
+                        };
 
-                        debug!("MODRM byte {modrm_byte} at location: 0x{:X}", instruction_idx+modrm_idx);
-                        let Ok(modrm) = rule.modrm_byte(*modrm_byte) else { continue };
+                        debug!(
+                            "MODRM byte {modrm_byte} at location: 0x{:X}",
+                            instruction_idx + modrm_idx
+                        );
+                        let Ok(modrm) = rule.modrm_byte(*modrm_byte) else {
+                            continue;
+                        };
                         debug!("Got ModRM Byte: 0x{:X} = {modrm:?}", modrm.as_byte());
 
                         let sib = if modrm.precedes_sib_byte() {
-                            let Some(sib_byte) = bytes.get(instruction_idx + modrm_idx+1) else {
+                            let Some(sib_byte) = bytes.get(instruction_idx + modrm_idx + 1) else {
                                 error!("Index out of bounds while attempting to get Sib byte");
                                 continue;
                             };
 
                             debug!("Attempting decode of SIB byte from 0x{:X}", sib_byte);
                             let sib = Sib::try_from(*sib_byte);
-                            if sib.is_err() { continue; } 
-                            else { sib.ok() }
-                        } else { None };
+                            if sib.is_err() {
+                                continue;
+                            } else {
+                                sib.ok()
+                            }
+                        } else {
+                            None
+                        };
 
                         // So, what does this do? It takes the minimum amount of bytes needed for
                         // the instruction ad indicated byte the decode rule and adds any bytes
                         // from MODRM or SIB byte displacement encodings.
-                        let Ok(bytes_remaining) = modrm.bytes_remaining(sib)
-                            else { 
-                                debug!("Failed to determine remaining bytes from MODRM and SIB bytes");
-                                continue;
-                            };
-                        let byte_range = offset.to_pointer().. offset.to_pointer() + min_length + bytes_remaining;
-
+                        let Ok(bytes_remaining) = modrm.bytes_remaining(sib) else {
+                            debug!("Failed to determine remaining bytes from MODRM and SIB bytes");
+                            continue;
+                        };
+                        let byte_range =
+                            offset.to_pointer()..offset.to_pointer() + min_length + bytes_remaining;
 
                         debug!("Grabbing byte range {:?} for decode attempt", byte_range);
 
-                        let Some(prospective_bytes) = bytes.get(byte_range)
-                               else { 
-                                   error!("Test should have enough bytes for decoding instruction");
-                                   continue
-                               };
-
-                        let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
-
-                        let instruction = if decode_attempt.is_ok() { 
-                            decode_attempt.expect("Ok due to conditional")
-                        }
-                        else { 
-                            info!("Decode unsuccessful");
-                            continue 
+                        let Some(prospective_bytes) = bytes.get(byte_range) else {
+                            error!("Test should have enough bytes for decoding instruction");
+                            continue;
                         };
-                        
+
+                        let decode_attempt =
+                            Bytes::from(offset.clone(), prospective_bytes, rule.clone());
+
+                        let instruction = if decode_attempt.is_ok() {
+                            decode_attempt.expect("Ok due to conditional")
+                        } else {
+                            info!("Decode unsuccessful");
+                            continue;
+                        };
+
                         instruction
-                    },
-                    false => { // know length a priori
+                    }
+                    false => {
+                        // know length a priori
                         let (length, _final) = rule.len();
                         debug!("Reported Rule Length: {:?}", rule.len());
 
-                        let byte_range = instruction_idx..=instruction_idx+length;
+                        let byte_range = instruction_idx..=instruction_idx + length;
 
-                        debug!("Rule reported true byte length {length} for non-Modrm instruction with byte range of {byte_range:?}");
+                        debug!(
+                            "Rule reported true byte length {length} for non-Modrm instruction with byte range of {byte_range:?}"
+                        );
 
-                        let Some(prospective_bytes) = bytes.get(instruction_idx.. instruction_idx + length)
-                            else { 
-                                error!("Attempted to grab more bytes than remain");
-                                continue
-                            };
+                        let Some(prospective_bytes) =
+                            bytes.get(instruction_idx..instruction_idx + length)
+                        else {
+                            error!("Attempted to grab more bytes than remain");
+                            continue;
+                        };
 
-                        debug!("Tentative Bytes: {}",prospective_bytes.iter().map(|c| format!("0x{c:X}  ")).collect::<String>());
+                        debug!(
+                            "Tentative Bytes: {}",
+                            prospective_bytes
+                                .iter()
+                                .map(|c| format!("0x{c:X}  "))
+                                .collect::<String>()
+                        );
 
-                        let decode_attempt = Bytes::from(offset.clone(), prospective_bytes, rule.clone());
+                        let decode_attempt =
+                            Bytes::from(offset.clone(), prospective_bytes, rule.clone());
 
                         let instruction = if decode_attempt.is_ok() {
                             debug!("Successfully decoded: {decode_attempt:?}");
                             let instruction = decode_attempt.expect("Ok due to conditional");
                             instruction
-                        }
-                        else { 
+                        } else {
                             info!("Decode unsuccessful");
-                            continue
+                            continue;
                         };
                         instruction
-                    },
+                    }
                 };
 
-                if rule.can_make_label() { // Unknown bytes make no labels.
+                if rule.can_make_label() {
+                    // Unknown bytes make no labels.
                     let instruction = instruction
-                        .get_instruction().expect("Should be a valid instruction");
+                        .get_instruction()
+                        .expect("Should be a valid instruction");
 
-                    let has_label_operand = instruction.operands
-                        .iter()
-                        .any(|op| {
-                            matches!(op, Operand::Label(_)) || matches!(op, Operand::Displacement(_))
-                            });
+                    let has_label_operand = instruction.operands.iter().any(|op| {
+                        matches!(op, Operand::Label(_)) || matches!(op, Operand::Displacement(_))
+                    });
 
                     if has_label_operand {
                         let label = instruction
-                            .get_displacement_offset().expect("Should have label");
+                            .get_displacement_offset()
+                            .expect("Should have label");
 
                         let _ = output.label(label); // Dont worry about the result in a test. We'll
-                                                     // regularly add labels "beyond" range
+                        // regularly add labels "beyond" range
                     }
                 }
-                if instruction.decoded_successfully() { break }
+                if instruction.decoded_successfully() {
+                    break;
+                }
             }
-            // We have either decoded an instruction or we have an unknown byte. 
+            // We have either decoded an instruction or we have an unknown byte.
             // In any case, we add it to the disasembly output.
             offset.increment(instruction.length() as u32);
-            let _ = output.add(instruction.clone()); 
-
-        };
+            let _ = output.add(instruction.clone());
+        }
         output
     }
 }
 impl Display for Disassembly {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let width = self.width;
-        let lines = self.lines
+        let lines = self
+            .lines
             .iter()
             .filter(|l| l.is_some())
             .map(|line| {
@@ -317,15 +349,16 @@ impl Display for Disassembly {
 
 #[test]
 fn single_line() {
-    let expected = vec![
-        "00000000: 74 0F     jz offset_00000018h"
-    ].join("\n");
+    let expected = vec!["00000000: 74 0F     jz offset_00000018h"].join("\n");
     let mut output = Disassembly::new(11);
 
     let mut instruction = Instruction::new("jz");
     instruction.add(Operand::Label(Offset(0x18)));
 
-    let jz   = Bytes::Decoded {bytes: vec![0x74, 0x0F], instruction: instruction.clone() };
+    let jz = Bytes::Decoded {
+        bytes: vec![0x74, 0x0F],
+        instruction: instruction.clone(),
+    };
 
     let _ = output.add(jz);
     assert_eq!(format!("{output}"), expected);
@@ -336,14 +369,15 @@ fn unknown_byte() {
     let expected = vec![
         "00000000: 58     pop eax",
         "00000001: 8F     db 0x8F",
-        "00000002: C0     db 0xC0",                
-    ].join("\n");
+        "00000002: C0     db 0xC0",
+    ]
+    .join("\n");
 
     let mut instruction = Instruction::new("pop");
     instruction.add(Operand::Register(Register::EAX));
-    let pop  = Bytes::Decoded { 
-        bytes: vec![0x58], 
-        instruction: instruction.clone()
+    let pop = Bytes::Decoded {
+        bytes: vec![0x58],
+        instruction: instruction.clone(),
     };
     let ub1 = Bytes::Uknown(0x8f);
     let ub2 = Bytes::Uknown(0xC0);
@@ -360,34 +394,34 @@ fn unknown_byte() {
 fn multiple_line() {
     let expected = vec![
         "00000000: 74 0F     jz offset_00000018h",
-        "00000002: 01 D1     add ecx, edx",                
+        "00000002: 01 D1     add ecx, edx",
         //"00000004: 8B 4D 0C     mov ecx,[ebp+0x0000000c]",
-    ].join("\n");
+    ]
+    .join("\n");
 
     let mut jz = Instruction::new("jz");
     jz.add(Operand::Label(Offset(0x18)));
     println!("{jz}");
-    let jz   = Bytes::Decoded { 
-        bytes: vec![0x74, 0x0F], 
-        instruction: jz.clone()
+    let jz = Bytes::Decoded {
+        bytes: vec![0x74, 0x0F],
+        instruction: jz.clone(),
     };
 
     let mut add = Instruction::new("add");
     add.add(Operand::Register(Register::ECX))
-       .add(Operand::Register(Register::EDX));
+        .add(Operand::Register(Register::EDX));
     println!("{add}");
-    let add  = Bytes::Decoded { 
+    let add = Bytes::Decoded {
         bytes: vec![0x01, 0xD1],
-        instruction: add.clone()
-    };                 
+        instruction: add.clone(),
+    };
     // Fix once I implement Displacement
     //let mut mov = Instruction::new("mov");
     //mov.add(Operand::));
-    //let mova = Bytes::Decoded { 
-        //bytes: vec![0x8B, 0x4D,0x0C],
-        //instruction: "mov ecx,[ebp+0x0000000c]".into()
+    //let mova = Bytes::Decoded {
+    //bytes: vec![0x8B, 0x4D,0x0C],
+    //instruction: "mov ecx,[ebp+0x0000000c]".into()
     //};
-    
 
     let mut output = Disassembly::new(11);
 
@@ -396,7 +430,6 @@ fn multiple_line() {
     //let _ = output.add(mova);
 
     assert_eq!(format!("{output}"), expected);
-
 }
 
 #[test]
@@ -404,23 +437,24 @@ fn with_label() {
     let expected = vec![
         "00000000: 74 0F     jz offset_00000018h",
         "offset_00000002h:",
-        "00000002: 01 D1     add ecx, edx",                
-    ].join("\n");               
+        "00000002: 01 D1     add ecx, edx",
+    ]
+    .join("\n");
 
     let mut jz = Instruction::new("jz");
     jz.add(Operand::Label(Offset(0x18)));
-    let jz   = Bytes::Decoded { 
-        bytes: vec![0x74, 0x0F], 
-        instruction: jz.clone()
+    let jz = Bytes::Decoded {
+        bytes: vec![0x74, 0x0F],
+        instruction: jz.clone(),
     };
 
     let mut add = Instruction::new("add");
     add.add(Operand::Register(Register::ECX))
-       .add(Operand::Register(Register::EDX));
-    let add  = Bytes::Decoded { 
+        .add(Operand::Register(Register::EDX));
+    let add = Bytes::Decoded {
         bytes: vec![0x01, 0xD1],
-        instruction: add.clone()
-    };                 
+        instruction: add.clone(),
+    };
 
     let mut output = Disassembly::new(11);
 

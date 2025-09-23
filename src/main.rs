@@ -1,13 +1,13 @@
-mod instruction;
 mod decode;
-mod opcodes;
-mod tests;
 mod input;
+mod instruction;
+mod opcodes;
 mod output;
+mod tests;
 
-use tracing::{level_filters::LevelFilter, error};
+use tracing::{error, level_filters::LevelFilter};
 
-use output::{setup_tracing, Disassembly};
+use output::{Disassembly, setup_tracing};
 
 fn main() {
     setup_tracing(LevelFilter::OFF);
