@@ -1,3 +1,17 @@
+
+# Contents
+
+- [Interaction](#interaction)
+  - [From Binary](#from-binary)
+  - [With Cargo](#with-cargo)
+- [Building](#building)
+  - [Instruction Compendium (Expanded Instruction Set)](#instruction-compendium-expanded-instruction-set)
+  - [Requirements](#requirements)
+- [Testing](#testing)
+- [Environment](#environment)
+- [Requirements](#requirements-2)
+- [Checking Test Cases](#checking-test-cases)
+
 # Interaction
 
 The commandline interface is simple and consists of a single argument `-i/--input` which takes a file (path). An output of disassembled bytes will following. 
@@ -92,7 +106,7 @@ test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
   - GPU: Intel GeminiLake [UHD Graphics 600] 
 
 # Requirements
-# 
+  
 - Not crash on any (in)valid inputs.
 - Use either the linear sweep or recursive descent algorithm.
 - Print disassembled instructions to standard output.
