@@ -4,6 +4,7 @@ The commandline interface is simple and consists of a single argument `-i/--inpu
 
 ## From Binary
 
+```bash
 ╭─⦗0⦘─⦗user@host:/path/to/disassembler⦘
 ╰─➤ ./target/release/disassembler -i ./src/tests/files/file1.o
     Finished `release` profile [optimized] target(s) in 0.10s
@@ -11,6 +12,7 @@ The commandline interface is simple and consists of a single argument `-i/--inpu
 00000000: 31 C0                 xor eax, eax
 <... omitted ...>
 00000023: C2 08 00              retn 0x0008
+```
 
 
 ## With Cargo
