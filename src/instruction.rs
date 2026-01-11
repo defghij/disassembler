@@ -570,11 +570,16 @@ pub mod encoding {
                             }
                         }
                         false => {
-                            // Form: [index*scale + disp]
-                            EffectiveAddress::IndexDisp {
-                                index,
-                                scale,
-                                displacement,
+                            if index == Register::ESP {
+                                // Form: [disp]
+                                EffectiveAddress::displacement(displacement.get_inner())
+                            } else {
+                                // Form: [index*scale + disp]
+                                EffectiveAddress::IndexDisp {
+                                    index,
+                                    scale,
+                                    displacement,
+                                }
                             }
                         }
                     };
