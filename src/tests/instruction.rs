@@ -96,6 +96,40 @@ pub mod edge_cases {
                 assert!((i / 2) <= output.line_count());
             });
     }
+
+    /// Feedback from instructor:
+    /// SIB noscale is not always handled properly (ESP cannot be scaled as it indicates no scale). In
+    /// your processing need to special case when scaled register value is 100 (should indicate no 
+    /// sacled register instead of ESP).
+    ///   Expected:
+    ///   00000000 8B04BD44332211 mov eax,[edi*4+0x11223344]
+    ///   00000007 8B042544332211 mov eax,[0x11223344]
+    ///   0000000E 8B046544332211 mov eax,[0x11223344]
+    ///   00000015 8B04A544332211 mov eax,[0x11223344]
+    ///   0000001C 8B04E544332211 mov eax,[0x11223344]
+    ///
+    ///   Your output:
+    ///   00000000: 8B 04 BD 44 33 22 11 mov eax, [ edi * 4 + 0x11223344 ]
+    ///   00000007: 8B 04 25 44 33 22 11 mov eax, [ esp + 0x11223344 ]
+    ///   0000000E: 8B 04 65 44 33 22 11 mov eax, [ esp * 2 + 0x11223344 ]
+    ///   00000015: 8B 04 A5 44 33 22 11 mov eax, [ esp * 4 + 0x11223344 ]
+    ///   0000001C: 8B 04 E5 44 33 22 11 mov eax, [ esp * 8 + 0x11223344 ]
+    #[test]
+    fn sib_noscale() {
+        let mapping: Vec<(&str, &[u8])> = vec![
+            ("00000000: 8B 04 BD 44 33 22 11     mov eax, [ edi * 4 + 0x11223344 ]", &[0x8B,0x04,0xBD,0x44,0x33,0x22,0x11]),
+            ("00000000: 8B 04 25 44 33 22 11     mov eax, [ 0x11223344 ]",           &[0x8B,0x04,0x25,0x44,0x33,0x22,0x11]),
+            ("00000000: 8B 04 65 44 33 22 11     mov eax, [ 0x11223344 ]",           &[0x8B,0x04,0x65,0x44,0x33,0x22,0x11]),
+            ("00000000: 8B 04 A5 44 33 22 11     mov eax, [ 0x11223344 ]",           &[0x8B,0x04,0xA5,0x44,0x33,0x22,0x11]),
+            ("00000000: 8B 04 E5 44 33 22 11     mov eax, [ 0x11223344 ]",           &[0x8B,0x04,0xE5,0x44,0x33,0x22,0x11]),
+        ];
+
+        mapping.iter().for_each(|(expected,bytes)|{
+            let output = Disassembly::from(bytes.to_vec());
+            assert_eq!(output.to_string(), *expected);
+        })
+
+    }
 }
 
 #[cfg(test)]
